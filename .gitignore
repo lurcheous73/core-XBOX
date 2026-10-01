@@ -1,0 +1,18 @@
+# Visual Studio / UWP
+.vs/
+bin/
+obj/
+AppPackages/
+BundleArtifacts/
+TestResults/
+*.user
+*.suo
+*.pfx
+*.cer
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+*.appxupload
+*.msixupload
+local.settings.json
