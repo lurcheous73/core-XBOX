@@ -9,20 +9,20 @@ namespace BrimstoneXbox.Services
 {
     public sealed class PlaybackService
     {
-        private static readonly Lazy<PlaybackService> _lazy =
+        static readonly Lazy<PlaybackService> Lazy =
             new Lazy<PlaybackService>(() => new PlaybackService());
 
-        public static PlaybackService Instance => _lazy.Value;
+        public static PlaybackService Instance => Lazy.Value;
 
-        private readonly MediaPlayer _player;
-        private MediaPlaybackList _playlist;
-        private string _title = string.Empty;
-        private string _artist = string.Empty;
-        private string _album = string.Empty;
+        readonly MediaPlayer _player;
+        MediaPlaybackList _playlist;
+        string _title = "";
+        string _artist = "";
+        string _album = "";
 
         public event EventHandler StateChanged;
 
-        private PlaybackService()
+        PlaybackService()
         {
             _player = new MediaPlayer
             {
@@ -31,184 +31,117 @@ namespace BrimstoneXbox.Services
                 Volume = 0.70
             };
 
-            _player.PlaybackSession.PlaybackStateChanged += (s, e) => RaiseStateChanged();
-            _player.PlaybackSession.PositionChanged += (s, e) => RaiseStateChanged();
-            _player.MediaEnded += (s, e) => RaiseStateChanged();
-            _player.MediaFailed += (s, e) => RaiseStateChanged();
+            _player.PlaybackSession.PlaybackStateChanged += (s,e) => Changed();
+            _player.MediaEnded += (s,e) => Changed();
+            _player.MediaFailed += (s,e) => Changed();
         }
-
-        public MediaPlayer Player => _player;
 
         public void PlayUrl(string url, JsonObject source, double volume, double positionSeconds)
         {
             if (string.IsNullOrWhiteSpace(url))
-                throw new ArgumentException("Playback URL is required.", nameof(url));
+                throw new ArgumentException("Playback URL is required.");
 
             _playlist = null;
-
-            var mediaSource = MediaSource.CreateFromUri(new Uri(url));
-            var item = new MediaPlaybackItem(mediaSource);
+            var item = new MediaPlaybackItem(MediaSource.CreateFromUri(new Uri(url)));
             ApplyMetadata(item, source);
-
             _player.Source = item;
-            _player.Volume = ClampVolume(volume);
+            _player.Volume = Clamp(volume);
             _player.IsMuted = false;
-
-            if (positionSeconds > 0)
-            {
-                EventHandler<object> opened = null;
-                opened = (sender, args) =>
-                {
-                    _player.MediaOpened -= opened;
-                    try
-                    {
-                        _player.PlaybackSession.Position = TimeSpan.FromSeconds(positionSeconds);
-                    }
-                    catch
-                    {
-                    }
-                };
-                _player.MediaOpened += opened;
-            }
-
             _player.Play();
-            RaiseStateChanged();
+            Changed();
         }
 
         public void PlayProgramme(IList<string> urls, JsonArray sources, double volume, double positionSeconds)
         {
             if (urls == null || urls.Count == 0)
-                throw new ArgumentException("At least one playback URL is required.", nameof(urls));
+                throw new ArgumentException("At least one playback URL is required.");
 
-            var list = new MediaPlaybackList
-            {
-                AutoRepeatEnabled = false,
-                ShuffleEnabled = false
-            };
-
+            var list = new MediaPlaybackList();
             for (var i = 0; i < urls.Count; i++)
             {
                 var item = new MediaPlaybackItem(MediaSource.CreateFromUri(new Uri(urls[i])));
                 JsonObject source = null;
-
-                if (sources != null && i < sources.Count && sources[i].ValueType == JsonValueType.Object)
+                if (sources != null && i < sources.Count &&
+                    sources[i].ValueType == JsonValueType.Object)
                     source = sources[i].GetObject();
 
                 ApplyMetadata(item, source);
                 list.Items.Add(item);
             }
 
-            list.CurrentItemChanged += OnCurrentItemChanged;
+            list.CurrentItemChanged += (s,e) =>
+            {
+                UpdateCurrentMetadata();
+                Changed();
+            };
+
             _playlist = list;
             _player.Source = list;
-            _player.Volume = ClampVolume(volume);
+            _player.Volume = Clamp(volume);
             _player.IsMuted = false;
-
-            if (positionSeconds > 0)
-            {
-                EventHandler<object> opened = null;
-                opened = (sender, args) =>
-                {
-                    _player.MediaOpened -= opened;
-                    try
-                    {
-                        _player.PlaybackSession.Position = TimeSpan.FromSeconds(positionSeconds);
-                    }
-                    catch
-                    {
-                    }
-                };
-                _player.MediaOpened += opened;
-            }
-
             _player.Play();
             UpdateCurrentMetadata();
-            RaiseStateChanged();
+            Changed();
         }
 
-        public void Pause()
-        {
-            _player.Pause();
-            RaiseStateChanged();
-        }
-
-        public void Resume()
-        {
-            _player.Play();
-            RaiseStateChanged();
-        }
+        public void Pause() { _player.Pause(); Changed(); }
+        public void Resume() { _player.Play(); Changed(); }
 
         public void Stop()
         {
             _player.Pause();
-            try
-            {
-                _player.PlaybackSession.Position = TimeSpan.Zero;
-            }
-            catch
-            {
-            }
-            RaiseStateChanged();
+            try { _player.PlaybackSession.Position = TimeSpan.Zero; } catch { }
+            Changed();
         }
 
         public void Seek(double seconds)
         {
-            _player.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, seconds));
-            RaiseStateChanged();
+            _player.PlaybackSession.Position =
+                TimeSpan.FromSeconds(Math.Max(0, seconds));
+            Changed();
         }
 
-        public void Next()
-        {
-            if (_playlist != null)
-                _playlist.MoveNext();
-        }
-
-        public void Previous()
-        {
-            if (_playlist != null)
-                _playlist.MovePrevious();
-        }
+        public void Next() { if (_playlist != null) _playlist.MoveNext(); }
+        public void Previous() { if (_playlist != null) _playlist.MovePrevious(); }
 
         public PlaybackSnapshot Snapshot()
         {
             var session = _player.PlaybackSession;
-            var state = session.PlaybackState;
-
             return new PlaybackSnapshot
             {
-                State = StateName(state),
-                Playing = state == MediaPlaybackState.Playing,
+                State = StateName(session.PlaybackState),
+                Playing = session.PlaybackState == MediaPlaybackState.Playing,
                 Title = _title,
                 Artist = _artist,
                 Album = _album,
                 PositionSeconds = session.Position.TotalSeconds,
                 DurationSeconds = session.NaturalDuration.TotalSeconds,
-                Volume = Math.Round(_player.Volume * 100.0, 1),
+                Volume = Math.Round(_player.Volume * 100, 1),
                 Muted = _player.IsMuted
             };
         }
 
         public void SetVolume(double percent)
         {
-            _player.Volume = ClampVolume(percent / 100.0);
-            RaiseStateChanged();
+            _player.Volume = Clamp(percent / 100.0);
+            Changed();
         }
 
         public void SetMuted(bool muted)
         {
             _player.IsMuted = muted;
-            RaiseStateChanged();
+            Changed();
         }
 
-        public void SaveState()
-        {
-        }
+        public void SaveState() { }
 
-        private void ApplyMetadata(MediaPlaybackItem item, JsonObject source)
+        void ApplyMetadata(MediaPlaybackItem item, JsonObject source)
         {
-            var title = JsonString(source, "title", JsonString(source, "track_title", "Brimstone"));
-            var artist = JsonString(source, "artist", string.Empty);
-            var album = JsonString(source, "album", JsonString(source, "album_title", string.Empty));
+            var title = JsonString(source, "title",
+                JsonString(source, "track_title", "Brimstone"));
+            var artist = JsonString(source, "artist", "");
+            var album = JsonString(source, "album",
+                JsonString(source, "album_title", ""));
 
             var props = item.GetDisplayProperties();
             props.Type = Windows.Media.MediaPlaybackType.Music;
@@ -222,60 +155,39 @@ namespace BrimstoneXbox.Services
             _album = album;
         }
 
-        private void OnCurrentItemChanged(MediaPlaybackList sender, CurrentMediaPlaybackItemChangedEventArgs args)
-        {
-            UpdateCurrentMetadata();
-            RaiseStateChanged();
-        }
-
-        private void UpdateCurrentMetadata()
+        void UpdateCurrentMetadata()
         {
             var item = _playlist?.CurrentItem;
-            if (item == null)
-                return;
-
+            if (item == null) return;
             var props = item.GetDisplayProperties();
-            _title = props.MusicProperties.Title ?? string.Empty;
-            _artist = props.MusicProperties.Artist ?? string.Empty;
-            _album = props.MusicProperties.AlbumTitle ?? string.Empty;
+            _title = props.MusicProperties.Title ?? "";
+            _artist = props.MusicProperties.Artist ?? "";
+            _album = props.MusicProperties.AlbumTitle ?? "";
         }
 
-        private void RaiseStateChanged()
-        {
-            StateChanged?.Invoke(this, EventArgs.Empty);
-        }
+        void Changed() => StateChanged?.Invoke(this, EventArgs.Empty);
 
-        private static double ClampVolume(double value)
-        {
-            if (double.IsNaN(value))
-                return 0.70;
-            return Math.Max(0, Math.Min(1, value));
-        }
+        static double Clamp(double value) =>
+            double.IsNaN(value) ? 0.70 : Math.Max(0, Math.Min(1, value));
 
-        private static string StateName(MediaPlaybackState state)
+        static string StateName(MediaPlaybackState state)
         {
             switch (state)
             {
-                case MediaPlaybackState.Opening:
-                    return "opening";
-                case MediaPlaybackState.Buffering:
-                    return "buffering";
-                case MediaPlaybackState.Playing:
-                    return "playing";
-                case MediaPlaybackState.Paused:
-                    return "paused";
-                default:
-                    return "idle";
+                case MediaPlaybackState.Opening: return "opening";
+                case MediaPlaybackState.Buffering: return "buffering";
+                case MediaPlaybackState.Playing: return "playing";
+                case MediaPlaybackState.Paused: return "paused";
+                default: return "idle";
             }
         }
 
-        private static string JsonString(JsonObject obj, string key, string fallback)
+        static string JsonString(JsonObject obj, string key, string fallback)
         {
-            if (obj == null || !obj.ContainsKey(key))
+            if (obj == null || !obj.ContainsKey(key) ||
+                obj[key].ValueType != JsonValueType.String)
                 return fallback;
-
-            var value = obj[key];
-            return value.ValueType == JsonValueType.String ? value.GetString() : fallback;
+            return obj[key].GetString();
         }
     }
 }
