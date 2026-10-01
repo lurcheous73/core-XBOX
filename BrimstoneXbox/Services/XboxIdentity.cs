@@ -3,6 +3,7 @@ using System.Linq;
 using Windows.Networking;
 using Windows.Networking.Connectivity;
 using Windows.Security.Cryptography;
+using Windows.Storage;
 using Windows.System.Profile;
 
 namespace BrimstoneXbox.Services
@@ -18,15 +19,24 @@ namespace BrimstoneXbox.Services
                     var info = SystemIdentification.GetSystemIdForPublisher();
                     var hex = CryptographicBuffer.EncodeToHexString(info.Id).ToLowerInvariant();
                     if (!string.IsNullOrWhiteSpace(hex))
-                    {
                         return "coreaudio:xbox-" + hex.Substring(0, Math.Min(24, hex.Length));
-                    }
                 }
                 catch
                 {
                 }
 
-                return "coreaudio:xbox-" + Environment.MachineName.ToLowerInvariant();
+                var settings = ApplicationData.Current.LocalSettings;
+                object saved;
+                if (settings.Values.TryGetValue("fallbackEndpointId", out saved))
+                {
+                    var value = saved as string;
+                    if (!string.IsNullOrWhiteSpace(value))
+                        return value;
+                }
+
+                var created = "coreaudio:xbox-" + Guid.NewGuid().ToString("N");
+                settings.Values["fallbackEndpointId"] = created;
+                return created;
             }
         }
 
