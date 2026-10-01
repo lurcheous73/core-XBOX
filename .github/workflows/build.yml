@@ -10,14 +10,18 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+
       - name: Add MSBuild
         uses: microsoft/setup-msbuild@v2
+
       - name: Generate package artwork
         shell: powershell
         run: .\scripts\Generate-Assets.ps1
+
       - name: Restore packages
         shell: powershell
         run: nuget restore .\BrimstoneXbox.sln
+
       - name: Build x64 Release
         shell: powershell
         run: msbuild .\BrimstoneXbox.sln /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
@@ -27,4 +31,17 @@ jobs:
         with:
           name: Brimstone-Xbox-Beta1-x64-build
           path: BrimstoneXbox/bin/x64/Release/**
+          if-no-files-found: error
+
+      - name: Build signed Dev Mode package
+        if: github.event_name == 'push'
+        shell: powershell
+        run: .\scripts\Build-DevPackage.ps1
+
+      - name: Upload Xbox Dev Mode package
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brimstone-Xbox-Beta1-DevMode-x64
+          path: dist/xbox-dev/**
           if-no-files-found: error
