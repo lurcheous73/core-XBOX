@@ -1,0 +1,24 @@
+name: Xbox UWP build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate package artwork
+        shell: powershell
+        run: .\scripts\Generate-Assets.ps1
+
+      - name: Build x64 Release
+        shell: powershell
+        run: msbuild .\BrimstoneXbox.sln /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
