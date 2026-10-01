@@ -21,3 +21,10 @@ jobs:
       - name: Build x64 Release
         shell: powershell
         run: msbuild .\BrimstoneXbox.sln /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brimstone-Xbox-Beta1-x64-build
+          path: BrimstoneXbox/bin/x64/Release/**
+          if-no-files-found: error
