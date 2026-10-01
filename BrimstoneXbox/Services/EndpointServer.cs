@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
+using UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding;
 
 namespace BrimstoneXbox.Services
 {
