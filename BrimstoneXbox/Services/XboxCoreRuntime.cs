@@ -286,7 +286,7 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.18"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.19"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
@@ -383,7 +383,8 @@ namespace BrimstoneXbox.Services
                 ["bluray_mpls_titles"] = JsonValue.CreateBooleanValue(true),
                 ["bluray_source_stage"] = JsonValue.CreateBooleanValue(true),
                 ["mkv_rip_plan"] = JsonValue.CreateBooleanValue(true),
-                ["makemkv_helper_contract"] = JsonValue.CreateBooleanValue(true),
+                ["protected_bluray_detect"] = JsonValue.CreateBooleanValue(true),
+                ["aacs_decrypt"] = JsonValue.CreateBooleanValue(false),
                 ["platform"] = JsonValue.CreateStringValue("xbox-customdevice")
             };
         }
@@ -448,7 +449,7 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.18-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.19-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["hostname"] = JsonValue.CreateStringValue(LocalCoreApiServer.PreferredHostName),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
