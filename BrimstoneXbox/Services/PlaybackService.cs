@@ -186,6 +186,43 @@ namespace BrimstoneXbox.Services
         public void Next() { if (_playlist != null) _playlist.MoveNext(); }
         public void Previous() { if (_playlist != null) _playlist.MovePrevious(); }
 
+        public List<QueueItem> QueueSnapshot()
+        {
+            var result = new List<QueueItem>();
+
+            if (_playlist != null)
+            {
+                var number = 1;
+                foreach (var item in _playlist.Items)
+                {
+                    var props = item.GetDisplayProperties();
+                    result.Add(new QueueItem
+                    {
+                        Number = number++.ToString(),
+                        Title = props.MusicProperties.Title ?? "Track",
+                        Artist = props.MusicProperties.Artist ?? "",
+                        Album = props.MusicProperties.AlbumTitle ?? "",
+                        DurationSeconds = 0
+                    });
+                }
+                return result;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_title))
+            {
+                result.Add(new QueueItem
+                {
+                    Number = "1",
+                    Title = _title,
+                    Artist = _artist,
+                    Album = _album,
+                    DurationSeconds = _player.PlaybackSession.NaturalDuration.TotalSeconds
+                });
+            }
+
+            return result;
+        }
+
         public PlaybackSnapshot Snapshot()
         {
             var session = _player.PlaybackSession;
