@@ -106,7 +106,7 @@ namespace BrimstoneXbox.Services
                 _dnssd.TextAttributes["name"] = "Xbox Core";
                 _dnssd.TextAttributes["role"] = "standalone";
                 _dnssd.TextAttributes["system_id"] = "";
-                _dnssd.TextAttributes["version"] = "0.2.14";
+                _dnssd.TextAttributes["version"] = "0.2.16";
                 _dnssd.TextAttributes["api_url"] = Address ?? "";
 
                 var result =
@@ -372,6 +372,19 @@ namespace BrimstoneXbox.Services
             {
                 var body = ParseBody(request);
                 return Ok(await _runtime.CreateBluRayRipPlanAsync(
+                    JsonString(body, "playlist", ""),
+                    JsonBool(body, "keep_video", false)));
+            }
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/ingest/bluray/rip/status")
+                return Ok(await _runtime.GetBluRayRipStatusAsync());
+
+            if (request.Method == "POST" &&
+                request.Path == "/api/v1/ingest/bluray/rip")
+            {
+                var body = ParseBody(request);
+                return Ok(await _runtime.RipBluRayTitleAsync(
                     JsonString(body, "playlist", ""),
                     JsonBool(body, "keep_video", false)));
             }
