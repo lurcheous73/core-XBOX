@@ -146,7 +146,7 @@ namespace BrimstoneXbox.Services
                 (ushort)0x0002,
                 (ushort)0x000F,
                 IOControlAccessMode.Read,
-                IOControlBufferingMethod.OutDirect);
+                IOControlBufferingMethod.DirectOutput);
 
             IBuffer input;
             using (var writer = new DataWriter())
