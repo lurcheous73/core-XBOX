@@ -122,7 +122,81 @@ namespace BrimstoneXbox.Services
                 result.Add(album);
             }
 
+            await PersistDatabaseAsync(result);
             return result;
+        }
+
+        async Task PersistDatabaseAsync(List<CoreAlbum> albums)
+        {
+            try
+            {
+                var root = ApplicationData.Current.LocalFolder;
+                var core = await root.CreateFolderAsync("Core", CreationCollisionOption.OpenIfExists);
+                var catalogue = await core.CreateFolderAsync("Catalogue", CreationCollisionOption.OpenIfExists);
+                var file = await catalogue.CreateFileAsync(
+                    "core-database.json",
+                    CreationCollisionOption.OpenIfExists);
+
+                JsonObject database = null;
+                try
+                {
+                    var existing = await FileIO.ReadTextAsync(file);
+                    JsonObject parsed;
+                    if (JsonObject.TryParse(existing, out parsed))
+                        database = parsed;
+                }
+                catch { }
+
+                if (database == null)
+                    database = new JsonObject();
+
+                database["schema"] = JsonValue.CreateNumberValue(1);
+                database["backend"] = JsonValue.CreateStringValue("xbox-embedded");
+                database["updated"] = JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"));
+
+                var albumRows = new JsonArray();
+                var trackRows = new JsonArray();
+
+                foreach (var album in albums)
+                {
+                    albumRows.Add(new JsonObject
+                    {
+                        ["id"] = JsonValue.CreateStringValue(album.Id ?? ""),
+                        ["title"] = JsonValue.CreateStringValue(album.Title ?? ""),
+                        ["artist"] = JsonValue.CreateStringValue(album.Artist ?? ""),
+                        ["track_count"] = JsonValue.CreateNumberValue(album.Tracks.Count)
+                    });
+
+                    var position = 1;
+                    foreach (var track in album.Tracks)
+                    {
+                        trackRows.Add(new JsonObject
+                        {
+                            ["id"] = JsonValue.CreateNumberValue(track.Id),
+                            ["album_id"] = JsonValue.CreateStringValue(album.Id ?? ""),
+                            ["position"] = JsonValue.CreateNumberValue(position++),
+                            ["title"] = JsonValue.CreateStringValue(track.Title ?? ""),
+                            ["artist"] = JsonValue.CreateStringValue(track.Artist ?? ""),
+                            ["album"] = JsonValue.CreateStringValue(track.Album ?? ""),
+                            ["duration_seconds"] = JsonValue.CreateNumberValue(track.DurationSeconds),
+                            ["local_path"] = JsonValue.CreateStringValue(track.LocalPath ?? "")
+                        });
+                    }
+                }
+
+                database["albums"] = albumRows;
+                database["tracks"] = trackRows;
+                if (!database.ContainsKey("sources"))
+                    database["sources"] = new JsonArray();
+                if (!database.ContainsKey("users"))
+                    database["users"] = new JsonArray();
+
+                await FileIO.WriteTextAsync(file, database.Stringify());
+            }
+            catch
+            {
+                // A failed diagnostic/index write must not hide playable media.
+            }
         }
 
         public async Task PlayTrackAsync(CoreTrack track, double volume = 0.70)
