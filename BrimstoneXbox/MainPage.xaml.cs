@@ -78,23 +78,20 @@ namespace BrimstoneXbox
 
             if (_mode == "core")
             {
-                await _nativeCore.StartAsync("core");
-                if (!_core.HasSavedLogin)
-                {
-                    ShowSetup();
-                    return;
-                }
-
                 try
                 {
-                    await BringCoreOnline(true);
+                    await _nativeCore.StartAsync("core");
                     await LoadLibrary();
                     ShowShell();
+                    ConnectionText.Text = _nativeCore.Ready
+                        ? "Xbox Core ready"
+                        : "Xbox Core starting";
                 }
                 catch (Exception ex)
                 {
-                    SetupStatusText.Text = ex.Message;
-                    ShowSetup();
+                    ShowShell();
+                    ConnectionText.Text = "Xbox Core degraded";
+                    Toast("Xbox Core: " + ex.Message);
                 }
             }
             else
@@ -129,11 +126,32 @@ namespace BrimstoneXbox
             SelectEdition("sooloos");
         }
 
-        void SelectEdition(string mode)
+        async void SelectEdition(string mode)
         {
             _mode = mode;
             WriteSetting(EditionSetting, mode);
             ConfigureEdition();
+
+            if (_mode == "core")
+            {
+                try
+                {
+                    await _nativeCore.StartAsync("core");
+                    await LoadLibrary();
+                    ShowShell();
+                    ConnectionText.Text = _nativeCore.Ready
+                        ? "Xbox Core ready"
+                        : "Xbox Core starting";
+                }
+                catch (Exception ex)
+                {
+                    ShowShell();
+                    ConnectionText.Text = "Xbox Core degraded";
+                    Toast("Xbox Core: " + ex.Message);
+                }
+                return;
+            }
+
             ShowSetup();
         }
 
@@ -142,11 +160,11 @@ namespace BrimstoneXbox
             var core = _mode == "core";
             CoreSetupFields.Visibility = core ? Visibility.Visible : Visibility.Collapsed;
             SooloosSetupFields.Visibility = core ? Visibility.Collapsed : Visibility.Visible;
-            SetupHeadingText.Text = core ? "Connect Brimstone Core" : "Connect Sooloos";
+            SetupHeadingText.Text = core ? "Optional Core Bridge" : "Connect Sooloos";
             SetupHelpText.Text = core
-                ? "Connect once. After that this Xbox boots straight into Your Music."
+                ? "This Xbox already runs Brimstone Core locally. Use this only to attach an existing Core during migration or testing."
                 : "Connect directly to the Meridian/Sooloos Core on this network.";
-            SetupConnectButton.Content = core ? "Connect Core" : "Connect Sooloos";
+            SetupConnectButton.Content = core ? "Connect bridge" : "Connect Sooloos";
 
             EditionBadgeText.Text = core ? "CORE · XBOX" : "SOOLOOS · XBOX";
             SettingsEditionText.Text = core ? "Core" : "Sooloos";
@@ -299,8 +317,10 @@ namespace BrimstoneXbox
             }
             else
             {
-                albums = await _core.GetAlbumsAsync();
-                LibrarySummaryText.Text = albums.Count + (albums.Count == 1 ? " album" : " albums") + " · Brimstone Core";
+                albums = await _nativeCore.GetAlbumsAsync();
+                LibrarySummaryText.Text = albums.Count +
+                    (albums.Count == 1 ? " album" : " albums") +
+                    " · Xbox Core";
             }
             AlbumGrid.ItemsSource = albums;
         }
@@ -336,7 +356,7 @@ namespace BrimstoneXbox
 
             try
             {
-                await _core.PlayTrackAsync(XboxIdentity.EndpointId, track.Id);
+                await _nativeCore.PlayTrackAsync(track);
                 ShowContent(NowPlayingPanel);
             }
             catch (Exception ex)
@@ -360,7 +380,7 @@ namespace BrimstoneXbox
                 }
                 else
                 {
-                    await _core.PlayAlbumAsync(XboxIdentity.EndpointId, _album.Tracks.Select(t => t.Id));
+                    await _nativeCore.PlayAlbumAsync(_album);
                 }
                 ShowContent(NowPlayingPanel);
             }
@@ -383,7 +403,7 @@ namespace BrimstoneXbox
                 }
                 else
                 {
-                    await _core.ControlAsync(XboxIdentity.EndpointId, action);
+                    _nativeCore.Control(action);
                 }
             }
             catch (Exception ex)
@@ -459,7 +479,7 @@ namespace BrimstoneXbox
 
             try
             {
-                var queue = await _core.GetQueueAsync(XboxIdentity.EndpointId);
+                var queue = _nativeCore.GetQueue();
                 QueueList.ItemsSource = queue;
                 QueueSummaryText.Text = queue.Count == 0
                     ? "Nothing queued"
@@ -491,56 +511,55 @@ namespace BrimstoneXbox
             {
                 RipModeText.Text = "AUTO-RIP READY";
                 RipStatusText.Text = "Sooloos ingest is not armed yet";
-                RipDetailText.Text = "The TV flow is locked: insert disc → identify → rip → verify → library. Direct Sooloos publication and Xbox UHD-drive access are the next hardware validation step.";
+                RipDetailText.Text = "The TV flow is locked: insert disc → identify → rip → verify → library.";
                 return;
             }
 
             try
             {
-                var nativeProbe = await _nativeCore.ProbeOpticalAsync();
-                var hw = nativeProbe.ContainsKey("hardware_visible") &&
-                         nativeProbe["hardware_visible"].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
-                         nativeProbe["hardware_visible"].GetBoolean();
-                var iface = nativeProbe.ContainsKey("interface_visible") &&
-                            nativeProbe["interface_visible"].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
-                            nativeProbe["interface_visible"].GetBoolean();
-                var media = nativeProbe.ContainsKey("mounted_media_visible") &&
-                            nativeProbe["mounted_media_visible"].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
-                            nativeProbe["mounted_media_visible"].GetBoolean();
+                var status = await _nativeCore.GetRipStatusAsync();
+                var state = JsonString(status, "state", "idle");
 
-                if (hw || iface || media)
+                RipModeText.Text = "XBOX AUTO-RIP";
+
+                if (state == "ripping")
                 {
-                    RipModeText.Text = "XBOX OPTICAL PROBE";
-                    RipStatusText.Text = hw
-                        ? "Xbox optical drive visible inside Brimstone"
-                        : "Xbox optical interface visible";
+                    var progress = JsonNumber(status, "progress_percent", 0);
+                    var track = JsonNumber(status, "current_track", 0);
+                    var total = JsonNumber(status, "track_count", 0);
+                    RipStatusText.Text = "Ripping track " + track.ToString("0") +
+                        " of " + total.ToString("0") +
+                        " · " + progress.ToString("0.0") + "%";
                     RipDetailText.Text =
-                        "Hardware: " + (hw ? "yes" : "no") +
-                        " · Interface: " + (iface ? "yes" : "no") +
-                        " · Mounted media: " + (media ? "yes" : "no") +
-                        ". Nickelback is currently serving science.";
+                        "Reading raw CDDA from the Xbox optical drive, writing WAV, hashing each track and publishing into the local Core library.";
+                    return;
                 }
 
-                var summary = await _core.GetIngestSummaryAsync();
-                RipModeText.Text = summary.AutoRip ? "AUTO-RIP ON" : "AUTO-RIP AVAILABLE";
+                if (state == "complete")
+                {
+                    var tracks = JsonNumber(status, "completed_tracks",
+                        JsonNumber(status, "track_count", 0));
+                    var speed = JsonNumber(status, "rip_speed_x", 0);
+                    var ejected = JsonBool(status, "eject");
+                    RipStatusText.Text = "Rip complete · " + tracks.ToString("0") + " tracks";
+                    RipDetailText.Text =
+                        "Verified local rip" +
+                        (speed > 0 ? " · " + speed.ToString("0.00") + "×" : "") +
+                        (ejected ? " · disc ejected" : "") +
+                        ". Refresh Your Music to see the album.";
+                    return;
+                }
 
-                if (summary.ActiveJobs > 0)
-                {
-                    RipStatusText.Text = "Ripping " + (string.IsNullOrWhiteSpace(summary.CurrentJob) ? "music disc" : summary.CurrentJob);
-                    RipDetailText.Text = "Brimstone is copying and verifying the disc. It will appear in Your Music when complete.";
-                }
-                else if (summary.OpticalDrives > 0)
-                {
-                    RipStatusText.Text = "Waiting for a music disc";
-                    RipDetailText.Text = summary.AutoRip
-                        ? "Insert a disc in the Core optical drive. Brimstone will identify, rip, verify, add it to Your Music and eject automatically."
-                        : "Core can see an optical drive. Automatic ingest is not enabled on that Core yet.";
-                }
-                else
-                {
-                    RipStatusText.Text = "Xbox auto-rip armed";
-                    RipDetailText.Text = "No external Core optical drive is visible. The Series X internal UHD drive is the next supported-API probe; Brimstone will use it automatically if Xbox exposes legal music-disc access.";
-                }
+                var probe = await _nativeCore.ProbeOpticalAsync();
+                var probeState = JsonString(probe, "status", "unknown");
+                var devices = JsonNumber(probe, "device_count", 0);
+
+                RipStatusText.Text = devices > 0
+                    ? "Waiting for a music disc"
+                    : "Optical drive unavailable";
+                RipDetailText.Text = devices > 0
+                    ? "Xbox optical ingest is armed. Insert a CD and Brimstone will rip it into this Xbox Core."
+                    : "Optical probe: " + probeState;
             }
             catch (Exception ex)
             {
@@ -551,7 +570,8 @@ namespace BrimstoneXbox
 
         void RipNowButton_Click(object sender, RoutedEventArgs e)
         {
-            Toast("Auto-rip is the default — insert a music disc.");
+            _ = _nativeCore.RipNowAsync();
+            Toast("Xbox Core rip started");
         }
 
         void ChangeEditionButton_Click(object sender, RoutedEventArgs e)
@@ -683,6 +703,15 @@ namespace BrimstoneXbox
             UpdateSettings();
             UpdatePlaybackUi();
             ShowContent(MusicPanel);
+            _serviceRefresh.Start();
+            if (_mode == "core")
+            {
+                ConnectionText.Text = _nativeCore.Ready
+                    ? "Xbox Core ready"
+                    : "Xbox Core starting";
+                OutputText.Text = "Xbox";
+                FooterOutputText.Text = "Xbox";
+            }
             MusicNavButton.Focus(FocusState.Programmatic);
         }
 
@@ -705,6 +734,29 @@ namespace BrimstoneXbox
         {
             object value;
             return _settings.Values.TryGetValue(key, out value) ? value as string ?? "" : "";
+        }
+
+        static string JsonString(Windows.Data.Json.JsonObject obj, string key, string fallback = "")
+        {
+            return obj != null && obj.ContainsKey(key) &&
+                   obj[key].ValueType == Windows.Data.Json.JsonValueType.String
+                ? obj[key].GetString()
+                : fallback;
+        }
+
+        static double JsonNumber(Windows.Data.Json.JsonObject obj, string key, double fallback)
+        {
+            return obj != null && obj.ContainsKey(key) &&
+                   obj[key].ValueType == Windows.Data.Json.JsonValueType.Number
+                ? obj[key].GetNumber()
+                : fallback;
+        }
+
+        static bool JsonBool(Windows.Data.Json.JsonObject obj, string key)
+        {
+            return obj != null && obj.ContainsKey(key) &&
+                   obj[key].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
+                   obj[key].GetBoolean();
         }
 
         void WriteSetting(string key, string value)
