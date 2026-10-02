@@ -9,7 +9,7 @@
   <Identity
     Name="BrimstoneCottage.BrimstoneXbox"
     Publisher="CN=Brimstone Cottage"
-    Version="0.2.19.0" />
+    Version="0.2.20.0" />
 
   <mp:PhoneIdentity
     PhoneProductId="9c796055-7074-4fd5-aaf8-b9eec20c8c86"
