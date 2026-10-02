@@ -84,6 +84,9 @@ namespace BrimstoneXbox.Services
                         {
                             var toc = await ReadTocAsync(custom);
                             row["toc"] = toc;
+
+                            var rawSector = await ReadRawAudioSectorAsync(custom);
+                            row["raw_sector_test"] = rawSector;
                         }
                     }
                     catch (Exception ex)
@@ -125,6 +128,71 @@ namespace BrimstoneXbox.Services
             {
                 // Diagnostic persistence must never make optical probing fail.
             }
+        }
+
+        async Task<JsonObject> ReadRawAudioSectorAsync(CustomDevice device)
+        {
+            // IOCTL_CDROM_RAW_READ:
+            // CTL_CODE(FILE_DEVICE_CD_ROM=2, function=0x000F,
+            //          METHOD_OUT_DIRECT, FILE_READ_ACCESS)
+            //
+            // RAW_READ_INFO is:
+            //   LARGE_INTEGER DiskOffset (8)
+            //   ULONG SectorCount       (4)
+            //   TRACK_MODE_TYPE          (4)
+            //
+            // For the first audio sector: offset 0, one sector, CDDA (2).
+            var ioctl = new IOControlCode(
+                (ushort)0x0002,
+                (ushort)0x000F,
+                IOControlAccessMode.Read,
+                IOControlBufferingMethod.OutDirect);
+
+            IBuffer input;
+            using (var writer = new DataWriter())
+            {
+                writer.ByteOrder = ByteOrder.LittleEndian;
+                writer.WriteInt64(0);
+                writer.WriteUInt32(1);
+                writer.WriteUInt32(2); // TRACK_MODE_TYPE.CDDA
+                input = writer.DetachBuffer();
+            }
+
+            var output = new WinBuffer(2352);
+            var ok = await device.TrySendIOControlAsync(ioctl, input, output);
+
+            var result = new JsonObject
+            {
+                ["ioctl"] = JsonValue.CreateStringValue("IOCTL_CDROM_RAW_READ"),
+                ["success"] = JsonValue.CreateBooleanValue(ok),
+                ["requested_sectors"] = JsonValue.CreateNumberValue(1),
+                ["requested_bytes"] = JsonValue.CreateNumberValue(2352),
+                ["bytes"] = JsonValue.CreateNumberValue(output.Length),
+                ["track_mode"] = JsonValue.CreateStringValue("CDDA")
+            };
+
+            if (!ok || output.Length == 0)
+                return result;
+
+            using (var reader = DataReader.FromBuffer(output))
+            {
+                var bytes = new byte[output.Length];
+                reader.ReadBytes(bytes);
+
+                var nonZero = 0;
+                for (var i = 0; i < bytes.Length; i++)
+                    if (bytes[i] != 0) nonZero++;
+
+                var previewLength = Math.Min(32, bytes.Length);
+                var preview = new byte[previewLength];
+                Array.Copy(bytes, preview, previewLength);
+
+                result["non_zero_bytes"] = JsonValue.CreateNumberValue(nonZero);
+                result["first_32_hex"] = JsonValue.CreateStringValue(
+                    BitConverter.ToString(preview).Replace("-", ""));
+            }
+
+            return result;
         }
 
         async Task<JsonObject> ReadTocAsync(CustomDevice device)
