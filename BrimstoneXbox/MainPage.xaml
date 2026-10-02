@@ -212,6 +212,7 @@
                                             <Border Margin="10,10,10,0" CornerRadius="13" Background="#2A2035">
                                                 <Grid>
                                                     <TextBlock Text="◉" FontSize="72" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
                                                     <Border Background="#BB0A0A0D" VerticalAlignment="Bottom" Padding="10,6">
                                                         <TextBlock Text="{x:Bind Artist}" FontSize="14" TextTrimming="CharacterEllipsis"/>
                                                     </Border>
@@ -235,7 +236,10 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Border Width="410" Height="410" CornerRadius="24" Background="#2A2035" VerticalAlignment="Top">
-                            <TextBlock Text="◉" FontSize="132" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Grid>
+                                <TextBlock Text="◉" FontSize="132" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image x:Name="AlbumArtworkImage" Stretch="UniformToFill"/>
+                            </Grid>
                         </Border>
                         <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
