@@ -22,6 +22,7 @@ namespace BrimstoneXbox.Services
         string _title = "";
         string _artist = "";
         string _album = "";
+        bool _stopped;
 
         public event EventHandler StateChanged;
 
@@ -35,7 +36,7 @@ namespace BrimstoneXbox.Services
             };
 
             _player.PlaybackSession.PlaybackStateChanged += (s,e) => Changed();
-            _player.MediaEnded += (s,e) => Changed();
+            _player.MediaEnded += (s,e) => { _stopped = true; Changed(); };
             _player.MediaFailed += (s,e) => Changed();
         }
 
@@ -48,6 +49,7 @@ namespace BrimstoneXbox.Services
             var item = new MediaPlaybackItem(MediaSource.CreateFromUri(new Uri(url)));
             ApplyMetadata(item, source);
             _player.Source = item;
+            _stopped = false;
             _player.Volume = Clamp(volume);
             _player.IsMuted = false;
             _player.Play();
@@ -115,6 +117,7 @@ namespace BrimstoneXbox.Services
 
             _playlist = list;
             _player.Source = list;
+            _stopped = false;
             _player.Volume = Clamp(volume);
             _player.IsMuted = false;
             _player.Play();
@@ -166,13 +169,25 @@ namespace BrimstoneXbox.Services
             Changed();
         }
 
-        public void Pause() { _player.Pause(); Changed(); }
-        public void Resume() { _player.Play(); Changed(); }
+        public void Pause()
+        {
+            _stopped = false;
+            _player.Pause();
+            Changed();
+        }
+
+        public void Resume()
+        {
+            _stopped = false;
+            _player.Play();
+            Changed();
+        }
 
         public void Stop()
         {
             _player.Pause();
             try { _player.PlaybackSession.Position = TimeSpan.Zero; } catch { }
+            _stopped = true;
             Changed();
         }
 
@@ -183,8 +198,19 @@ namespace BrimstoneXbox.Services
             Changed();
         }
 
-        public void Next() { if (_playlist != null) _playlist.MoveNext(); }
-        public void Previous() { if (_playlist != null) _playlist.MovePrevious(); }
+        public void Next()
+        {
+            _stopped = false;
+            if (_playlist != null) _playlist.MoveNext();
+            Changed();
+        }
+
+        public void Previous()
+        {
+            _stopped = false;
+            if (_playlist != null) _playlist.MovePrevious();
+            Changed();
+        }
 
         public List<QueueItem> QueueSnapshot()
         {
@@ -228,8 +254,8 @@ namespace BrimstoneXbox.Services
             var session = _player.PlaybackSession;
             return new PlaybackSnapshot
             {
-                State = StateName(session.PlaybackState),
-                Playing = session.PlaybackState == MediaPlaybackState.Playing,
+                State = _stopped ? "stopped" : StateName(session.PlaybackState),
+                Playing = !_stopped && session.PlaybackState == MediaPlaybackState.Playing,
                 Title = _title,
                 Artist = _artist,
                 Album = _album,
