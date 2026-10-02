@@ -17,8 +17,10 @@ namespace BrimstoneXbox.Services
         readonly int _sectorSize;
         readonly long _length;
         long _position;
-        uint _cachedLba = uint.MaxValue;
-        byte[] _cachedSector;
+        const int CacheSectors = 64;
+        uint _cacheStartLba = uint.MaxValue;
+        int _cacheSectorCount;
+        byte[] _cacheData;
 
         ScsiOpticalStream(CustomDevice device, uint lastLba, int sectorSize)
         {
@@ -75,17 +77,25 @@ namespace BrimstoneXbox.Services
             };
         }
 
-        async Task<byte[]> ReadSectorAsync(uint lba)
+        async Task<byte[]> ReadSectorsAsync(
+            uint lba,
+            ushort sectorCount)
         {
+            if (sectorCount == 0)
+                return new byte[0];
+
             var cdb = new byte[10];
             cdb[0] = 0x28; // READ(10)
             cdb[2] = (byte)((lba >> 24) & 0xFF);
             cdb[3] = (byte)((lba >> 16) & 0xFF);
             cdb[4] = (byte)((lba >> 8) & 0xFF);
             cdb[5] = (byte)(lba & 0xFF);
-            cdb[7] = 0;
-            cdb[8] = 1;
-            return await SendScsiAsync(_device, cdb, _sectorSize);
+            cdb[7] = (byte)((sectorCount >> 8) & 0xFF);
+            cdb[8] = (byte)(sectorCount & 0xFF);
+            return await SendScsiAsync(
+                _device,
+                cdb,
+                checked(_sectorSize * sectorCount));
         }
 
         static async Task<byte[]> SendScsiAsync(
