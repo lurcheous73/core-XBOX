@@ -15,7 +15,6 @@ namespace BrimstoneXbox
     public sealed partial class MainPage : Page
     {
         const string EditionSetting = "xboxEdition";
-        const string SooloosHostSetting = "sooloosHost";
 
         readonly CoreClient _core = new CoreClient();
         readonly XboxCoreRuntime _nativeCore = new XboxCoreRuntime();
@@ -26,13 +25,10 @@ namespace BrimstoneXbox
         readonly DispatcherTimer _toastTimer = new DispatcherTimer();
 
         EndpointServer _server;
-        SooloosClient _sooloos;
         CoreAlbum _album;
         CoreAlbum _heroAlbum;
         List<CoreAlbum> _albums = new List<CoreAlbum>();
-        SooloosZone _currentZone;
         string _mode = "";
-        string _sooloosZoneId = "";
         bool _serviceRefreshBusy;
         string _lastObservedRipFingerprint = "";
         string _lastObservedBluRayManifest = "";
@@ -96,11 +92,6 @@ namespace BrimstoneXbox
         }
 
         void CoreEditionButton_Click(object sender, RoutedEventArgs e)
-        {
-            SelectEdition("standalone");
-        }
-
-        void SooloosEditionButton_Click(object sender, RoutedEventArgs e)
         {
             SelectEdition("standalone");
         }
@@ -202,32 +193,9 @@ namespace BrimstoneXbox
             UpdateSettings();
         }
 
-        async Task ConnectSooloos()
-        {
-            var host = SooloosClient.NormaliseHost(SooloosHostBox.Text);
-            if (string.IsNullOrWhiteSpace(host))
-                throw new InvalidOperationException("Enter the Sooloos Core address.");
-
-            _sooloos = new SooloosClient(host);
-            var zones = await _sooloos.ZonesAsync();
-            if (zones.Count == 0)
-                throw new InvalidOperationException("Sooloos connected, but no zones were returned.");
-
-            _sooloosZoneId = zones[0].Id;
-            _currentZone = zones[0];
-            WriteSetting(SooloosHostSetting, host);
-            SooloosHostBox.Text = host;
-            ConnectionText.Text = "Sooloos connected";
-            OutputText.Text = _currentZone.Name;
-            FooterOutputText.Text = _currentZone.Name;
-            _heartbeat.Stop();
-            _serviceRefresh.Start();
-            UpdateSettings();
-        }
-
         async void Heartbeat_Tick(object sender, object e)
         {
-            if (_mode != "core" || _server == null || !_core.HasDeviceCredential) return;
+            if (_server == null || !_core.HasDeviceCredential) return;
             try
             {
                 await _core.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address);
@@ -385,7 +353,7 @@ namespace BrimstoneXbox
             try
             {
                 var playback = PlaybackService.Instance.Snapshot();
-                if (_mode == "core" &&
+                if (true &&
                     _heroAlbum != null &&
                     string.Equals(playback.Album, _heroAlbum.Title,
                         StringComparison.OrdinalIgnoreCase) &&
@@ -398,15 +366,7 @@ namespace BrimstoneXbox
                 }
                 else if (_heroAlbum != null)
                 {
-                    if (_mode == "sooloos")
-                    {
-                        _album = _heroAlbum;
-                        await _sooloos.PlayAlbumAsync(_sooloosZoneId, _heroAlbum.Id);
-                    }
-                    else
-                    {
-                        await _nativeCore.PlayAlbumAsync(_heroAlbum);
-                    }
+                    await _nativeCore.PlayAlbumAsync(_heroAlbum);
                 }
 
                 RefreshHomeHero();
@@ -425,7 +385,7 @@ namespace BrimstoneXbox
 
         async void FavouriteAlbumButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_mode != "core" || _album == null)
+            if (_album == null)
                 return;
 
             var favourite = _nativeCore.ToggleFavourite(_album);
@@ -439,7 +399,7 @@ namespace BrimstoneXbox
 
         async void SendToCoreButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_mode != "core" || _album == null)
+            if (false || _album == null)
                 return;
 
             if (!_core.HasSavedLogin)
@@ -469,43 +429,6 @@ namespace BrimstoneXbox
             finally
             {
                 SendToCoreButton.IsEnabled = true;
-            }
-        }
-
-        async void SendToSooloosButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_mode != "core" || _album == null)
-                return;
-
-            var host = ReadSetting(SooloosHostSetting);
-            if (string.IsNullOrWhiteSpace(host))
-            {
-                UpdateSettings();
-                ShowContent(SettingsPanel);
-                TransferSooloosHostBox.Focus(FocusState.Programmatic);
-                Toast("Connect the Sooloos Core first");
-                return;
-            }
-
-            SendToSooloosButton.IsEnabled = false;
-            try
-            {
-                Toast("Sending album to Sooloos…");
-                var importer = new SooloosImportService(host);
-                var result = await importer.ImportAlbumAsync(_album);
-                var count = JsonNumber(result, "track_count", 0);
-                var verified = JsonBool(result, "verified");
-                Toast("Sooloos import complete · " +
-                    count.ToString("0") + " tracks" +
-                    (verified ? " · verified" : ""));
-            }
-            catch (Exception ex)
-            {
-                Toast("Sooloos transfer: " + ex.Message);
-            }
-            finally
-            {
-                SendToSooloosButton.IsEnabled = true;
             }
         }
 
@@ -605,31 +528,6 @@ namespace BrimstoneXbox
             }
         }
 
-        async void TransferSooloosConnectButton_Click(object sender, RoutedEventArgs e)
-        {
-            TransferSooloosStatusText.Text = "Connecting…";
-            try
-            {
-                var host = SooloosClient.NormaliseHost(
-                    TransferSooloosHostBox.Text);
-                if (string.IsNullOrWhiteSpace(host))
-                    throw new InvalidOperationException(
-                        "Enter the Sooloos Core address.");
-
-                var client = new SooloosClient(host);
-                await client.TestConnectionAsync();
-                WriteSetting(SooloosHostSetting, host);
-                TransferSooloosHostBox.Text = host;
-                SooloosHostBox.Text = host;
-                TransferSooloosStatusText.Text = "Ready · direct import enabled";
-                Toast("Sooloos destination connected");
-            }
-            catch (Exception ex)
-            {
-                TransferSooloosStatusText.Text = ex.Message;
-            }
-        }
-
         void SettingsNavButton_Click(object sender, RoutedEventArgs e)
         {
             UpdateSettings();
@@ -667,20 +565,6 @@ namespace BrimstoneXbox
             }
 
             await Task.CompletedTask;
-        }
-
-        async Task RefreshSooloosState()
-        {
-            if (_sooloos == null) return;
-            var zones = await _sooloos.ZonesAsync();
-            if (zones.Count == 0) return;
-
-            _currentZone = zones.FirstOrDefault(z => z.Id == _sooloosZoneId) ?? zones[0];
-            _sooloosZoneId = _currentZone.Id;
-            OutputText.Text = _currentZone.Name;
-            FooterOutputText.Text = _currentZone.Name;
-            ConnectionText.Text = "Sooloos connected";
-            UpdatePlaybackUi();
         }
 
         async Task ObserveCompletedRipAsync()
@@ -734,14 +618,6 @@ namespace BrimstoneXbox
 
         async Task RefreshRipStatus()
         {
-            if (_mode == "sooloos")
-            {
-                RipModeText.Text = "AUTO-RIP READY";
-                RipStatusText.Text = "Sooloos ingest is not armed yet";
-                RipDetailText.Text = "The TV flow is locked: insert disc → identify → rip → verify → library.";
-                return;
-            }
-
             try
             {
                 SendBluRayToCoreButton.Visibility = Visibility.Collapsed;
@@ -1019,77 +895,63 @@ namespace BrimstoneXbox
 
         void UpdatePlaybackUi()
         {
-            string title;
-            string artist;
-            string album;
-            bool playing;
-            string state;
-
-            if (_mode == "sooloos" && _currentZone != null)
-            {
-                title = string.IsNullOrWhiteSpace(_currentZone.Title) ? "Nothing playing" : _currentZone.Title;
-                artist = _currentZone.Subtitle ?? "";
-                album = "";
-                state = _currentZone.State ?? "";
-                playing = state.IndexOf("play", StringComparison.OrdinalIgnoreCase) >= 0;
-            }
-            else
-            {
-                var p = PlaybackService.Instance.Snapshot();
-                title = string.IsNullOrWhiteSpace(p.Title) ? "Nothing playing" : p.Title;
-                artist = p.Artist ?? "";
-                album = p.Album ?? "";
-                state = p.State ?? "";
-                playing = p.Playing;
-            }
+            var p = PlaybackService.Instance.Snapshot();
+            var title = string.IsNullOrWhiteSpace(p.Title)
+                ? "Nothing playing"
+                : p.Title;
+            var artist = p.Artist ?? "";
+            var album = p.Album ?? "";
+            var state = p.State ?? "";
+            var playing = p.Playing;
 
             NowTitleText.Text = title;
             NowArtistText.Text = artist;
             NowAlbumText.Text = album;
             FooterTitleText.Text = title;
-            FooterMetaText.Text = string.Join(" · ", new[] { artist, album, state }.Where(v => !string.IsNullOrWhiteSpace(v)));
-            PlayPauseButton.Content = playing ? "Ⅱ  Pause" : "▶  Play";
-            FooterPlayPauseButton.Content = playing ? "Ⅱ" : "▶";
+            FooterMetaText.Text = string.Join(
+                " · ",
+                new[] { artist, album, state }
+                    .Where(v => !string.IsNullOrWhiteSpace(v)));
+            PlayPauseButton.Content = playing
+                ? "Ⅱ  Pause"
+                : "▶  Play";
+            FooterPlayPauseButton.Content = playing
+                ? "Ⅱ"
+                : "▶";
 
-            if (_mode == "core")
-            {
-                OutputText.Text = PlaybackService.Instance.AudioOutputName;
-                FooterOutputText.Text = PlaybackService.Instance.AudioOutputName;
+            OutputText.Text =
+                PlaybackService.Instance.AudioOutputName;
+            FooterOutputText.Text =
+                PlaybackService.Instance.AudioOutputName;
 
-                if (MusicPanel.Visibility == Visibility.Visible)
-                    RefreshHomeHero();
-            }
+            if (MusicPanel.Visibility == Visibility.Visible)
+                RefreshHomeHero();
         }
 
         void UpdateSettings()
         {
             SettingsEditionText.Text = "Standalone Core";
-            TransferCoreUrlBox.Text = _core.BaseUrl ?? TransferCoreUrlBox.Text ?? "";
-            TransferCoreStatusText.Text = _core.HasSavedLogin
-                ? "Ready · " + (_core.BaseUrl ?? "")
-                : "Not connected";
-            TransferSooloosHostBox.Text = ReadSetting(SooloosHostSetting);
-            TransferSooloosStatusText.Text =
-                string.IsNullOrWhiteSpace(ReadSetting(SooloosHostSetting))
-                    ? "Not connected"
-                    : "Ready · " + ReadSetting(SooloosHostSetting);
-            SettingsCoreText.Text = _mode == "sooloos"
-                ? (string.IsNullOrWhiteSpace(ReadSetting(SooloosHostSetting)) ? "Sooloos not configured" : ReadSetting(SooloosHostSetting))
-                : (_nativeCore.Running
-                    ? "Xbox Core · " + (_nativeCore.ApiAddress ?? "local API starting") +
-                      (string.IsNullOrWhiteSpace(_core.BaseUrl) ? "" : "\nLibrary bridge · " + _core.BaseUrl)
-                    : (string.IsNullOrWhiteSpace(_core.BaseUrl) ? "Core not configured" : _core.BaseUrl));
-            SettingsEndpointText.Text = _mode == "sooloos"
-                ? (_currentZone == null ? "No Sooloos zone" : _currentZone.Name)
-                : XboxIdentity.EndpointId;
+            TransferCoreUrlBox.Text =
+                _core.BaseUrl ??
+                TransferCoreUrlBox.Text ??
+                "";
+            TransferCoreStatusText.Text =
+                _core.HasSavedLogin
+                    ? "Ready · " + (_core.BaseUrl ?? "")
+                    : "Optional · not connected";
+
+            SettingsCoreText.Text = _nativeCore.Running
+                ? "Xbox Core · " +
+                  (_nativeCore.ApiAddress ??
+                   "http://xbox-core.local:8096")
+                : "Starting local Core…";
+            SettingsEndpointText.Text =
+                XboxIdentity.EndpointId;
         }
 
         void ShowFirstRun()
         {
-            FirstRunPanel.Visibility = Visibility.Visible;
-            SetupPanel.Visibility = Visibility.Collapsed;
-            ShellPanel.Visibility = Visibility.Collapsed;
-            CoreEditionButton.Focus(FocusState.Programmatic);
+            ShowShell();
         }
 
         void ShowSetup()
@@ -1099,18 +961,8 @@ namespace BrimstoneXbox
             ShellPanel.Visibility = Visibility.Collapsed;
             ConfigureEdition();
 
-            if (_mode == "sooloos")
-            {
-                SooloosHostBox.Text = ReadSetting(SooloosHostSetting);
-                SooloosHostBox.Focus(FocusState.Programmatic);
-            }
-            else
-            {
-                CoreUrlBox.Text = string.IsNullOrWhiteSpace(_core.BaseUrl)
-                    ? "http://10.26.30.20:8080"
-                    : _core.BaseUrl;
-                CoreUrlBox.Focus(FocusState.Programmatic);
-            }
+            CoreUrlBox.Text = _core.BaseUrl ?? "";
+            CoreUrlBox.Focus(FocusState.Programmatic);
         }
 
         void ShowShell()
@@ -1123,14 +975,14 @@ namespace BrimstoneXbox
             UpdatePlaybackUi();
             ShowContent(MusicPanel);
             _serviceRefresh.Start();
-            if (_mode == "core")
-            {
-                ConnectionText.Text = _nativeCore.Ready
-                    ? "Xbox Core ready"
-                    : "Xbox Core starting";
-                OutputText.Text = PlaybackService.Instance.AudioOutputName;
-                FooterOutputText.Text = PlaybackService.Instance.AudioOutputName;
-            }
+
+            ConnectionText.Text = _nativeCore.Ready
+                ? "Standalone Xbox Core ready"
+                : "Standalone Xbox Core starting";
+            OutputText.Text =
+                PlaybackService.Instance.AudioOutputName;
+            FooterOutputText.Text =
+                PlaybackService.Instance.AudioOutputName;
             MusicNavButton.Focus(FocusState.Programmatic);
         }
 
