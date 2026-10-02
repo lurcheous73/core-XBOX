@@ -19,6 +19,7 @@ namespace BrimstoneXbox.Services
         const int RawSectorBytes = 2352;
         const int FramesPerSecond = 75;
         const int ChunkSectors = 128;
+        uint _preferredChunkSectors = ChunkSectors;
 
         static readonly Guid CdromInterfaceGuid =
             new Guid("53F56308-B6BF-11D0-94F2-00A0C91EFB8B");
@@ -128,12 +129,12 @@ namespace BrimstoneXbox.Services
                             long current = track.StartLba;
                             while (current < track.EndLba)
                             {
-                                var count = (uint)Math.Min(ChunkSectors, track.EndLba - current);
-                                var buffer = await ReadAudioAsync(device, current, count);
-                                if (buffer == null || buffer.Length != count * RawSectorBytes)
-                                    throw new InvalidOperationException(
-                                        "Short CDDA read on track " + track.Number +
-                                        " at LBA " + current + ".");
+                                var requested = (uint)Math.Min(
+                                    _preferredChunkSectors,
+                                    track.EndLba - current);
+                                var chunk = await ReadAudioAsync(device, current, requested);
+                                var count = chunk.Sectors;
+                                var buffer = chunk.Buffer;
 
                                 hash.Append(buffer);
 
@@ -292,7 +293,7 @@ namespace BrimstoneXbox.Services
             }
         }
 
-        async Task<IBuffer> ReadAudioAsync(CustomDevice device, long startSector, uint count)
+        async Task<ReadChunk> ReadAudioAsync(CustomDevice device, long startSector, uint requestedCount)
         {
             var ioctl = new IOControlCode(
                 (ushort)0x0002,
@@ -300,23 +301,42 @@ namespace BrimstoneXbox.Services
                 IOControlAccessMode.Read,
                 IOControlBufferingMethod.DirectOutput);
 
-            IBuffer input;
-            using (var writer = new DataWriter())
+            var count = Math.Max(1U, requestedCount);
+
+            while (true)
             {
-                writer.ByteOrder = ByteOrder.LittleEndian;
-                writer.WriteInt64(startSector * 2048L);
-                writer.WriteUInt32(count);
-                writer.WriteUInt32(2);
-                input = writer.DetachBuffer();
+                IBuffer input;
+                using (var writer = new DataWriter())
+                {
+                    writer.ByteOrder = ByteOrder.LittleEndian;
+                    writer.WriteInt64(startSector * 2048L);
+                    writer.WriteUInt32(count);
+                    writer.WriteUInt32(2);
+                    input = writer.DetachBuffer();
+                }
+
+                var output = new WinBuffer(count * RawSectorBytes);
+                var ok = await device.TrySendIOControlAsync(ioctl, input, output);
+
+                if (ok && output.Length == count * RawSectorBytes)
+                {
+                    if (count < _preferredChunkSectors)
+                        _preferredChunkSectors = count;
+
+                    return new ReadChunk
+                    {
+                        Buffer = output,
+                        Sectors = count
+                    };
+                }
+
+                if (count == 1)
+                    throw new InvalidOperationException(
+                        "IOCTL_CDROM_RAW_READ failed at LBA " + startSector +
+                        " even for a single CDDA sector.");
+
+                count = Math.Max(1U, count / 2U);
             }
-
-            var output = new WinBuffer(count * RawSectorBytes);
-            var ok = await device.TrySendIOControlAsync(ioctl, input, output);
-            if (!ok)
-                throw new InvalidOperationException(
-                    "IOCTL_CDROM_RAW_READ failed at LBA " + startSector + ".");
-
-            return output;
         }
 
         static long MsfToLba(byte minute, byte second, byte frame)
@@ -408,6 +428,12 @@ namespace BrimstoneXbox.Services
                    obj[key].ValueType == JsonValueType.String
                 ? obj[key].GetString()
                 : "";
+        }
+
+        sealed class ReadChunk
+        {
+            public IBuffer Buffer;
+            public uint Sectors;
         }
 
         sealed class TocEntry
