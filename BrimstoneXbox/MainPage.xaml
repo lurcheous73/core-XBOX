@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:BrimstoneXbox.Models"
     Background="{StaticResource BrimstoneBackground}"
+    UseLayoutRounding="True"
     KeyDown="Page_KeyDown">
 
     <Page.Resources>
@@ -39,6 +40,8 @@
 
     <Viewbox Stretch="Uniform" StretchDirection="Both">
         <Grid Width="1600" Height="900" Background="{StaticResource BrimstoneBackground}">
+            <!-- 16:9 TV design canvas. Viewbox scales exactly to 1920x1080 and 3840x2160;
+                 primary shell content retains ~3% horizontal safe-area inset. -->
 
             <!-- First run: appliance personality only. -->
             <Grid x:Name="FirstRunPanel" Background="#09090C">
