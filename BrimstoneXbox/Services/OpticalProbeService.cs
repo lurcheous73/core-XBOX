@@ -1,5 +1,7 @@
+using DiscUtils.Udf;
 using System;
 using System.Linq;
+using System.IO;
 using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Devices.Custom;
@@ -126,6 +128,8 @@ namespace BrimstoneXbox.Services
                     ["error"] = JsonValue.CreateStringValue(Describe(ex))
                 };
             }
+
+            result["udf_reader"] = await ProbeUdfReaderAsync();
 
             _last = result;
             await PersistAsync(result);
