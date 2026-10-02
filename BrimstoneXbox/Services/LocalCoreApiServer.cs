@@ -106,7 +106,7 @@ namespace BrimstoneXbox.Services
                 _dnssd.TextAttributes["name"] = "Xbox Core";
                 _dnssd.TextAttributes["role"] = "standalone";
                 _dnssd.TextAttributes["system_id"] = "";
-                _dnssd.TextAttributes["version"] = "0.2.10";
+                _dnssd.TextAttributes["version"] = "0.2.14";
                 _dnssd.TextAttributes["api_url"] = Address ?? "";
 
                 var result =
@@ -363,6 +363,19 @@ namespace BrimstoneXbox.Services
                 });
             }
 
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/ingest/bluray/titles")
+                return Ok(await _runtime.ScanBluRayAsync());
+
+            if (request.Method == "POST" &&
+                request.Path == "/api/v1/ingest/bluray/plan")
+            {
+                var body = ParseBody(request);
+                return Ok(await _runtime.CreateBluRayRipPlanAsync(
+                    JsonString(body, "playlist", ""),
+                    JsonBool(body, "keep_video", false)));
+            }
+
             if (request.Method == "POST" &&
                 request.Path == "/api/v1/ingest/rip")
             {
@@ -615,6 +628,19 @@ namespace BrimstoneXbox.Services
                 return fallback;
 
             return obj[key].GetString();
+        }
+
+        static bool JsonBool(
+            JsonObject obj,
+            string key,
+            bool fallback)
+        {
+            if (obj == null ||
+                !obj.ContainsKey(key) ||
+                obj[key].ValueType != JsonValueType.Boolean)
+                return fallback;
+
+            return obj[key].GetBoolean();
         }
 
         static double JsonNumber(
