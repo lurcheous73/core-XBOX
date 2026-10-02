@@ -4,10 +4,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Storage;
+using Windows.System.Threading;
 
 namespace BrimstoneXbox.Services
 {
-    public sealed class CoreStackSupervisor
+    public sealed class CoreStackSupervisor : IDisposable
     {
         readonly OpticalProbeService _optical;
         readonly CdRipService _rip;
@@ -17,6 +18,8 @@ namespace BrimstoneXbox.Services
         StorageFolder _stackFolder;
         Func<Task> _startWeb;
         Func<string> _webAddress;
+        ThreadPoolTimer _ingestWatch;
+        bool _ingestWatchBusy;
 
         public CoreStackSupervisor(OpticalProbeService optical, CdRipService rip)
         {
@@ -189,9 +192,13 @@ namespace BrimstoneXbox.Services
                 {
                     Running(state,
                         "Xbox optical ingest · " + deviceCount.ToString("0") +
-                        " CD-ROM interface(s) · raw CDDA enabled",
+                        " CD-ROM interface(s) · raw CDDA enabled · watching for discs",
                         "xbox-customdevice");
-                    _ = _rip.AutoRipCurrentDiscAsync();
+
+                    if (await _rip.IsAudioDiscPresentAsync())
+                        _ = _rip.AutoRipCurrentDiscAsync();
+
+                    StartIngestWatcher();
                 }
                 else
                 {
@@ -207,6 +214,37 @@ namespace BrimstoneXbox.Services
             }
 
             await PersistAsync();
+        }
+
+        void StartIngestWatcher()
+        {
+            if (_ingestWatch != null)
+                return;
+
+            _ingestWatch = ThreadPoolTimer.CreatePeriodicTimer(
+                timer => { _ = CheckForDiscAsync(); },
+                TimeSpan.FromSeconds(8));
+        }
+
+        async Task CheckForDiscAsync()
+        {
+            if (_ingestWatchBusy || _rip.Busy)
+                return;
+
+            _ingestWatchBusy = true;
+            try
+            {
+                if (await _rip.IsAudioDiscPresentAsync())
+                    await _rip.AutoRipCurrentDiscAsync();
+            }
+            catch
+            {
+                // A missing/changed disc is normal during polling.
+            }
+            finally
+            {
+                _ingestWatchBusy = false;
+            }
         }
 
         public JsonObject Snapshot()
@@ -363,6 +401,15 @@ namespace BrimstoneXbox.Services
                    obj[key].ValueType == JsonValueType.Number
                 ? obj[key].GetNumber()
                 : 0;
+        }
+
+        public void Dispose()
+        {
+            if (_ingestWatch != null)
+            {
+                _ingestWatch.Cancel();
+                _ingestWatch = null;
+            }
         }
 
         sealed class StackServiceState
