@@ -63,6 +63,9 @@ namespace BrimstoneXbox.Services
                     GetString(existing, "state") == "complete" &&
                     GetString(existing, "fingerprint") == toc.Fingerprint)
                 {
+                    var ejected = await EjectAsync(device);
+                    existing["eject"] = JsonValue.CreateBooleanValue(ejected);
+                    await WriteStatusAsync(statusFile, existing);
                     await WritePointerAsync(existing, discFolder.Name);
                     return existing;
                 }
@@ -204,6 +207,8 @@ namespace BrimstoneXbox.Services
                         ? Math.Round((totalSectors / 75.0) / discStopwatch.Elapsed.TotalSeconds, 2)
                         : 0);
 
+                status["eject"] = JsonValue.CreateBooleanValue(await EjectAsync(device));
+
                 await WriteStatusAsync(statusFile, status);
                 await WritePointerAsync(status, discFolder.Name);
                 return status;
@@ -336,6 +341,27 @@ namespace BrimstoneXbox.Services
                         " even for a single CDDA sector.");
 
                 count = Math.Max(1U, count / 2U);
+            }
+        }
+
+        async Task<bool> EjectAsync(CustomDevice device)
+        {
+            // IOCTL_STORAGE_EJECT_MEDIA:
+            // CTL_CODE(FILE_DEVICE_MASS_STORAGE=0x2D, function=0x0202,
+            //          METHOD_BUFFERED, FILE_READ_ACCESS)
+            var ioctl = new IOControlCode(
+                (ushort)0x002D,
+                (ushort)0x0202,
+                IOControlAccessMode.Read,
+                IOControlBufferingMethod.Buffered);
+
+            try
+            {
+                return await device.TrySendIOControlAsync(ioctl, null, null);
+            }
+            catch
+            {
+                return false;
             }
         }
 
