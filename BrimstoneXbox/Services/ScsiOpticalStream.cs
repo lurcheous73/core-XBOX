@@ -56,7 +56,6 @@ namespace BrimstoneXbox.Services
             }
             catch
             {
-                device.Dispose();
                 throw;
             }
         }
@@ -226,8 +225,6 @@ namespace BrimstoneXbox.Services
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing)
-                _device?.Dispose();
             base.Dispose(disposing);
         }
 
