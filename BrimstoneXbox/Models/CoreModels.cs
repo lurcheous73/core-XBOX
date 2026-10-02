@@ -11,6 +11,7 @@ namespace BrimstoneXbox.Models
         public BitmapImage Artwork { get; set; }
         public System.DateTimeOffset AddedAt { get; set; }
         public bool IsFavourite { get; set; }
+        public string SourceKind { get; set; }
         public List<CoreTrack> Tracks { get; } = new List<CoreTrack>();
         public string Meta => Tracks.Count > 0
             ? Tracks.Count + (Tracks.Count == 1 ? " track" : " tracks")
@@ -24,6 +25,8 @@ namespace BrimstoneXbox.Models
         public string Artist { get; set; }
         public string Album { get; set; }
         public double DurationSeconds { get; set; }
+        public double StartSeconds { get; set; }
+        public double DurationLimitSeconds { get; set; }
         public string LocalPath { get; set; }
 
         public string DurationText
