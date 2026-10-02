@@ -85,8 +85,11 @@ namespace BrimstoneXbox.Services
                             var toc = await ReadTocAsync(custom);
                             row["toc"] = toc;
 
-                            var rawSector = await ReadRawAudioSectorAsync(custom);
+                            var rawSector = await ReadRawAudioSectorAsync(custom, 0);
                             row["raw_sector_test"] = rawSector;
+
+                            var audioSector = await ReadRawAudioSectorAsync(custom, 750);
+                            row["raw_sector_10s_test"] = audioSector;
                         }
                     }
                     catch (Exception ex)
@@ -130,7 +133,7 @@ namespace BrimstoneXbox.Services
             }
         }
 
-        async Task<JsonObject> ReadRawAudioSectorAsync(CustomDevice device)
+        async Task<JsonObject> ReadRawAudioSectorAsync(CustomDevice device, long sector)
         {
             // IOCTL_CDROM_RAW_READ:
             // CTL_CODE(FILE_DEVICE_CD_ROM=2, function=0x000F,
@@ -141,7 +144,8 @@ namespace BrimstoneXbox.Services
             //   ULONG SectorCount       (4)
             //   TRACK_MODE_TYPE          (4)
             //
-            // For the first audio sector: offset 0, one sector, CDDA (2).
+            // DiskOffset is the requested logical sector multiplied by 2048,
+            // even though a CDDA raw sector returns 2352 bytes.
             var ioctl = new IOControlCode(
                 (ushort)0x0002,
                 (ushort)0x000F,
@@ -152,7 +156,7 @@ namespace BrimstoneXbox.Services
             using (var writer = new DataWriter())
             {
                 writer.ByteOrder = ByteOrder.LittleEndian;
-                writer.WriteInt64(0);
+                writer.WriteInt64(sector * 2048L);
                 writer.WriteUInt32(1);
                 writer.WriteUInt32(2); // TRACK_MODE_TYPE.CDDA
                 input = writer.DetachBuffer();
@@ -165,6 +169,7 @@ namespace BrimstoneXbox.Services
             {
                 ["ioctl"] = JsonValue.CreateStringValue("IOCTL_CDROM_RAW_READ"),
                 ["success"] = JsonValue.CreateBooleanValue(ok),
+                ["start_sector"] = JsonValue.CreateNumberValue(sector),
                 ["requested_sectors"] = JsonValue.CreateNumberValue(1),
                 ["requested_bytes"] = JsonValue.CreateNumberValue(2352),
                 ["bytes"] = JsonValue.CreateNumberValue(output.Length),
