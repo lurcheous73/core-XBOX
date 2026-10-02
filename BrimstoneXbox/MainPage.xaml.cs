@@ -122,7 +122,6 @@ namespace BrimstoneXbox
         void ConfigureEdition()
         {
             CoreSetupFields.Visibility = Visibility.Visible;
-            SooloosSetupFields.Visibility = Visibility.Collapsed;
             SetupHeadingText.Text = "Optional Core destination";
             SetupHelpText.Text =
                 "This Xbox is its own Brimstone Core. Connect another Core only when you want to copy music between them.";
@@ -339,7 +338,6 @@ namespace BrimstoneXbox
             SendToCoreButton.Visibility = directTransfer
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            SendToSooloosButton.Visibility = Visibility.Collapsed;
 
             TracksList.Visibility = Visibility.Visible;
             TracksList.ItemsSource = _album.Tracks;
@@ -353,8 +351,7 @@ namespace BrimstoneXbox
             try
             {
                 var playback = PlaybackService.Instance.Snapshot();
-                if (true &&
-                    _heroAlbum != null &&
+                if (_heroAlbum != null &&
                     string.Equals(playback.Album, _heroAlbum.Title,
                         StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(playback.State, "stopped",
@@ -399,7 +396,7 @@ namespace BrimstoneXbox
 
         async void SendToCoreButton_Click(object sender, RoutedEventArgs e)
         {
-            if (false || _album == null)
+            if (_album == null)
                 return;
 
             if (!_core.HasSavedLogin)
