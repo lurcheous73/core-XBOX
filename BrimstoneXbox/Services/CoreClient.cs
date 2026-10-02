@@ -405,8 +405,11 @@ namespace BrimstoneXbox.Services
             var root = ApplicationData.Current.LocalFolder;
             var manifestPath = System.IO.Path.Combine(
                 root.Path,
-                manifestRelative.Replace('/', System.IO.Path.DirectorySeparatorChar));
-            var manifestFile = await StorageFile.GetFileFromPathAsync(manifestPath);
+                manifestRelative.Replace(
+                    '/',
+                    System.IO.Path.DirectorySeparatorChar));
+            var manifestFile =
+                await StorageFile.GetFileFromPathAsync(manifestPath);
             var manifestText = await FileIO.ReadTextAsync(manifestFile);
 
             JsonObject manifest;
@@ -435,7 +438,201 @@ namespace BrimstoneXbox.Services
                 throw new InvalidOperationException(
                     "The Blu-ray title manifest has no staged files.");
 
-            using (var multipart = new MultipartFormDataContent())
+            var staged = new List<BluRayTransferFile>();
+            foreach (var value in manifest.GetNamedArray("staged_files"))
+            {
+                if (value.ValueType != JsonValueType.Object)
+                    continue;
+
+                var row = value.GetObject();
+                var sourceName = StringValue(row, "source", "");
+                var storedName = StringValue(row, "file", "");
+                if (string.IsNullOrWhiteSpace(sourceName) ||
+                    string.IsNullOrWhiteSpace(storedName))
+                    continue;
+
+                staged.Add(new BluRayTransferFile
+                {
+                    SourceName = sourceName,
+                    File = await sourceFolder.GetFileAsync(storedName)
+                });
+            }
+
+            if (staged.Count == 0)
+                throw new InvalidOperationException(
+                    "No staged Blu-ray source clips were available.");
+
+            var modular = await TryImportStagedBluRayModularAsync(
+                manifest,
+                staged);
+            if (modular != null)
+                return modular;
+
+            return await ImportStagedBluRayLegacyAsync(
+                manifest,
+                staged);
+        }
+
+        async Task<JsonObject> TryImportStagedBluRayModularAsync(
+            JsonObject manifest,
+            IList<BluRayTransferFile> staged)
+        {
+            var baseUrl = BaseUrl.TrimEnd('/');
+            using (var client = new HttpClient())
+            {
+                client.Timeout = TimeSpan.FromHours(4);
+
+                JsonObject created;
+                using (var request = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    new Uri(baseUrl +
+                        "/api/v1/ingest/bluray-programmes")))
+                {
+                    request.Headers.Accept.Add(
+                        new MediaTypeWithQualityHeaderValue(
+                            "application/json"));
+                    request.Headers.Authorization =
+                        new AuthenticationHeaderValue(
+                            "Bearer",
+                            UserToken);
+                    request.Content = new StringContent(
+                        manifest.Stringify(),
+                        Encoding.UTF8,
+                        "application/json");
+
+                    var response = await client.SendAsync(request);
+                    if (response.StatusCode ==
+                            System.Net.HttpStatusCode.NotFound ||
+                        response.StatusCode ==
+                            System.Net.HttpStatusCode.MethodNotAllowed)
+                        return null;
+
+                    var body = await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                        throw new InvalidOperationException(
+                            CoreTransferError(
+                                body,
+                                "Core Blu-ray job creation failed (" +
+                                (int)response.StatusCode + ")."));
+
+                    created = JsonObject.Parse(
+                        string.IsNullOrWhiteSpace(body)
+                            ? "{}"
+                            : body);
+                }
+
+                var jobId = StringValue(created, "job_id", "");
+                if (string.IsNullOrWhiteSpace(jobId))
+                    throw new InvalidOperationException(
+                        "Destination Core did not return a Blu-ray job id.");
+
+                foreach (var stagedFile in staged)
+                {
+                    var path =
+                        "/api/v1/ingest/bluray-programmes/" +
+                        Uri.EscapeDataString(jobId) +
+                        "/clips/" +
+                        Uri.EscapeDataString(stagedFile.SourceName);
+
+                    using (var request = new HttpRequestMessage(
+                        HttpMethod.Put,
+                        new Uri(baseUrl + path)))
+                    using (var content =
+                        await StorageFileHttpContent.CreateAsync(
+                            stagedFile.File))
+                    {
+                        request.Headers.Accept.Add(
+                            new MediaTypeWithQualityHeaderValue(
+                                "application/json"));
+                        request.Headers.Authorization =
+                            new AuthenticationHeaderValue(
+                                "Bearer",
+                                UserToken);
+                        content.Headers.ContentType =
+                            new MediaTypeHeaderValue(
+                                "application/octet-stream");
+                        request.Content = content;
+
+                        var response = await client.SendAsync(request);
+                        var body =
+                            await response.Content.ReadAsStringAsync();
+                        if (!response.IsSuccessStatusCode)
+                            throw new InvalidOperationException(
+                                CoreTransferError(
+                                    body,
+                                    "Core rejected Blu-ray clip " +
+                                    stagedFile.SourceName +
+                                    " (" +
+                                    (int)response.StatusCode +
+                                    ")."));
+                    }
+                }
+
+                using (var request = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    new Uri(
+                        baseUrl +
+                        "/api/v1/ingest/bluray-programmes/" +
+                        Uri.EscapeDataString(jobId) +
+                        "/finalize")))
+                {
+                    request.Headers.Accept.Add(
+                        new MediaTypeWithQualityHeaderValue(
+                            "application/json"));
+                    request.Headers.Authorization =
+                        new AuthenticationHeaderValue(
+                            "Bearer",
+                            UserToken);
+
+                    var response = await client.SendAsync(request);
+                    var body =
+                        await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                        throw new InvalidOperationException(
+                            CoreTransferError(
+                                body,
+                                "Core Blu-ray finalization failed (" +
+                                (int)response.StatusCode + ")."));
+
+                    var final = JsonObject.Parse(
+                        string.IsNullOrWhiteSpace(body)
+                            ? "{}"
+                            : body);
+                    if (!string.Equals(
+                        StringValue(final, "state", ""),
+                        "completed",
+                        StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            "Core did not confirm the Blu-ray ingest.");
+
+                    var normalized = new JsonObject
+                    {
+                        ["ok"] = JsonValue.CreateBooleanValue(true),
+                        ["backend"] =
+                            JsonValue.CreateStringValue(
+                                "modular-core"),
+                        ["job_id"] =
+                            JsonValue.CreateStringValue(jobId)
+                    };
+                    if (final.ContainsKey("result") &&
+                        final["result"].ValueType ==
+                            JsonValueType.Object)
+                        normalized["result"] =
+                            final.GetNamedObject("result");
+                    else
+                        normalized["result"] =
+                            new JsonObject();
+                    return normalized;
+                }
+            }
+        }
+
+        async Task<JsonObject> ImportStagedBluRayLegacyAsync(
+            JsonObject manifest,
+            IList<BluRayTransferFile> staged)
+        {
+            using (var multipart =
+                new MultipartFormDataContent())
             {
                 var manifestContent = new StringContent(
                     manifest.Stringify(),
@@ -443,66 +640,55 @@ namespace BrimstoneXbox.Services
                     "application/json");
                 multipart.Add(manifestContent, "manifest");
 
-                var added = 0;
-                foreach (var value in manifest.GetNamedArray("staged_files"))
+                foreach (var stagedFile in staged)
                 {
-                    if (value.ValueType != JsonValueType.Object)
-                        continue;
-
-                    var row = value.GetObject();
-                    var sourceName = StringValue(row, "source", "");
-                    var storedName = StringValue(row, "file", "");
-                    if (string.IsNullOrWhiteSpace(sourceName) ||
-                        string.IsNullOrWhiteSpace(storedName))
-                        continue;
-
-                    var file = await sourceFolder.GetFileAsync(storedName);
-                    var content = await StorageFileHttpContent.CreateAsync(file);
+                    var content =
+                        await StorageFileHttpContent.CreateAsync(
+                            stagedFile.File);
                     content.Headers.ContentType =
                         new MediaTypeHeaderValue("video/mp2t");
-                    multipart.Add(content, "files", sourceName);
-                    added++;
+                    multipart.Add(
+                        content,
+                        "files",
+                        stagedFile.SourceName);
                 }
 
-                if (added == 0)
-                    throw new InvalidOperationException(
-                        "No staged Blu-ray source clips were available.");
-
-                var ingestBase = BuildIngestBaseUrl(BaseUrl);
+                var ingestBase = BuildLegacyIngestBaseUrl(
+                    BaseUrl);
                 using (var request = new HttpRequestMessage(
                     HttpMethod.Post,
-                    new Uri(ingestBase + "/api/v1/ingest/bluray-programme")))
+                    new Uri(
+                        ingestBase +
+                        "/api/v1/ingest/bluray-programme")))
                 using (var client = new HttpClient())
                 {
                     client.Timeout = TimeSpan.FromHours(4);
                     request.Headers.Accept.Add(
-                        new MediaTypeWithQualityHeaderValue("application/json"));
+                        new MediaTypeWithQualityHeaderValue(
+                            "application/json"));
                     request.Headers.Authorization =
-                        new AuthenticationHeaderValue("Bearer", UserToken);
+                        new AuthenticationHeaderValue(
+                            "Bearer",
+                            UserToken);
                     request.Content = multipart;
 
                     var response = await client.SendAsync(request);
-                    var body = await response.Content.ReadAsStringAsync();
+                    var body =
+                        await response.Content.ReadAsStringAsync();
                     if (!response.IsSuccessStatusCode)
-                    {
-                        var message = "Core Blu-ray ingest failed (" +
-                            (int)response.StatusCode + ").";
-                        try
-                        {
-                            var error = JsonObject.Parse(body);
-                            message = StringValue(
-                                error,
-                                "detail",
-                                StringValue(error, "error", message));
-                        }
-                        catch { }
-                        throw new InvalidOperationException(message);
-                    }
+                        throw new InvalidOperationException(
+                            CoreTransferError(
+                                body,
+                                "Core Blu-ray ingest failed (" +
+                                (int)response.StatusCode + ")."));
 
                     var parsed = JsonObject.Parse(
-                        string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                        string.IsNullOrWhiteSpace(body)
+                            ? "{}"
+                            : body);
                     if (!parsed.ContainsKey("ok") ||
-                        parsed["ok"].ValueType != JsonValueType.Boolean ||
+                        parsed["ok"].ValueType !=
+                            JsonValueType.Boolean ||
                         !parsed["ok"].GetBoolean())
                         throw new InvalidOperationException(
                             "Core did not confirm the Blu-ray ingest.");
@@ -512,7 +698,26 @@ namespace BrimstoneXbox.Services
             }
         }
 
-        static string BuildIngestBaseUrl(string coreBaseUrl)
+        static string CoreTransferError(
+            string body,
+            string fallback)
+        {
+            try
+            {
+                var error = JsonObject.Parse(body);
+                return StringValue(
+                    error,
+                    "detail",
+                    StringValue(error, "error", fallback));
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        static string BuildLegacyIngestBaseUrl(
+            string coreBaseUrl)
         {
             var core = new Uri(coreBaseUrl);
             var builder = new UriBuilder(core)
@@ -523,6 +728,12 @@ namespace BrimstoneXbox.Services
                 Fragment = ""
             };
             return builder.Uri.ToString().TrimEnd('/');
+        }
+
+        sealed class BluRayTransferFile
+        {
+            public string SourceName;
+            public StorageFile File;
         }
 
         static async Task<string> Sha256Async(StorageFile file)
