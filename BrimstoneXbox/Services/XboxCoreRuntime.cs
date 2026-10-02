@@ -11,7 +11,7 @@ namespace BrimstoneXbox.Services
     {
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         readonly OpticalProbeService _optical = new OpticalProbeService();
-        readonly CdRipService _cdRip = new CdRipService();
+        readonly CdRipService _cdRip = new CdRipService();\n        readonly BluRayAudioService _bluRay = new BluRayAudioService();
         readonly NativeCatalogueService _catalogue = new NativeCatalogueService();
         readonly CoreStackSupervisor _stack;
 
@@ -31,7 +31,7 @@ namespace BrimstoneXbox.Services
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
         public Task<JsonObject> GetRipStatusAsync() => _cdRip.CurrentStatusAsync();
-        public Task<JsonObject> RipNowAsync() => _cdRip.AutoRipCurrentDiscAsync();
+        public Task<JsonObject> RipNowAsync() => _cdRip.AutoRipCurrentDiscAsync();\n        public Task<JsonObject> ScanBluRayAsync() => _bluRay.ScanAsync();\n        public Task<JsonObject> CreateBluRayRipPlanAsync(string playlist, bool keepVideo) =>\n            _bluRay.CreateRipPlanAsync(playlist, keepVideo);
         public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
         public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
         public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
@@ -423,7 +423,7 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.10-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.14-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
                 ["uptime_seconds"] = JsonValue.CreateNumberValue(
