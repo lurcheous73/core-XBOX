@@ -1,9 +1,12 @@
 using BrimstoneXbox.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using Windows.Storage;
 
 namespace BrimstoneXbox.Services
 {
@@ -48,6 +51,85 @@ namespace BrimstoneXbox.Services
             _player.Volume = Clamp(volume);
             _player.IsMuted = false;
             _player.Play();
+            Changed();
+        }
+
+        public async Task PlayLocalFileAsync(
+            string relativePath,
+            JsonObject source,
+            double volume,
+            double positionSeconds)
+        {
+            var file = await ResolveLocalFileAsync(relativePath);
+            _playlist = null;
+
+            var item = new MediaPlaybackItem(MediaSource.CreateFromStorageFile(file));
+            ApplyMetadata(item, source);
+            _player.Source = item;
+            _player.Volume = Clamp(volume);
+            _player.IsMuted = false;
+            _player.Play();
+
+            if (positionSeconds > 0)
+            {
+                try
+                {
+                    _player.PlaybackSession.Position =
+                        TimeSpan.FromSeconds(positionSeconds);
+                }
+                catch { }
+            }
+
+            Changed();
+        }
+
+        public async Task PlayLocalProgrammeAsync(
+            IList<string> relativePaths,
+            JsonArray sources,
+            double volume,
+            double positionSeconds)
+        {
+            if (relativePaths == null || relativePaths.Count == 0)
+                throw new ArgumentException("At least one local track is required.");
+
+            var list = new MediaPlaybackList();
+            for (var i = 0; i < relativePaths.Count; i++)
+            {
+                var file = await ResolveLocalFileAsync(relativePaths[i]);
+                var item = new MediaPlaybackItem(MediaSource.CreateFromStorageFile(file));
+
+                JsonObject source = null;
+                if (sources != null && i < sources.Count &&
+                    sources[i].ValueType == JsonValueType.Object)
+                    source = sources[i].GetObject();
+
+                ApplyMetadata(item, source);
+                list.Items.Add(item);
+            }
+
+            list.CurrentItemChanged += (s, e) =>
+            {
+                UpdateCurrentMetadata();
+                Changed();
+            };
+
+            _playlist = list;
+            _player.Source = list;
+            _player.Volume = Clamp(volume);
+            _player.IsMuted = false;
+            _player.Play();
+            UpdateCurrentMetadata();
+
+            if (positionSeconds > 0)
+            {
+                try
+                {
+                    _player.PlaybackSession.Position =
+                        TimeSpan.FromSeconds(positionSeconds);
+                }
+                catch { }
+            }
+
             Changed();
         }
 
