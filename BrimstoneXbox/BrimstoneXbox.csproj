@@ -51,6 +51,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform" Version="6.2.14" />
+    <PackageReference Include="DiscUtils.Udf" Version="0.16.13" />
   </ItemGroup>
 
   <ItemGroup>
@@ -64,6 +65,7 @@
     <Compile Include="Services\DiscMetadataService.cs" />
     <Compile Include="Services\LocalCoreApiServer.cs" />
     <Compile Include="Services\OpticalProbeService.cs" />
+    <Compile Include="Services\ScsiOpticalStream.cs" />
     <Compile Include="Services\CdRipService.cs" />
     <Compile Include="Services\EndpointServer.cs" />
     <Compile Include="Services\PlaybackService.cs" />
