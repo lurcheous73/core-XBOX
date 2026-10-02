@@ -9,6 +9,7 @@ namespace BrimstoneXbox.Services
     {
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         LocalCoreApiServer _api;
+        readonly OpticalProbeService _optical = new OpticalProbeService();
         DateTimeOffset _startedAt;
 
         public bool Running { get; private set; }
@@ -33,10 +34,14 @@ namespace BrimstoneXbox.Services
             _settings.Values["nativeCoreEdition"] = Edition;
             _settings.Values["nativeCoreStarted"] = _startedAt.ToString("o");
 
-            _api = new LocalCoreApiServer(BuildHealth, BuildRuntime);
+            _api = new LocalCoreApiServer(BuildHealth, BuildRuntime, BuildOptical);
             await _api.StartAsync();
 
             Running = true;
+
+            // Probe only after the Core API is listening so diagnostics remain reachable
+            // even if Xbox blocks raw optical access.
+            await _optical.ProbeAsync();
         }
 
         public JsonObject BuildHealth()
@@ -65,7 +70,13 @@ namespace BrimstoneXbox.Services
             modules.Add(Module("queue", true, "Playback queue engine available"));
             modules.Add(Module("renderer", true, "MediaPlayer background renderer"));
             modules.Add(Module("sooloos", true, "Direct broker compiled"));
-            modules.Add(Module("ingest", false, "Xbox optical capability probe pending"));
+            var optical = _optical.LastResult;
+            var opticalStatus = optical.ContainsKey("status") &&
+                optical["status"].ValueType == JsonValueType.String
+                    ? optical["status"].GetString()
+                    : "unknown";
+            modules.Add(Module("ingest", opticalStatus == "devices_found",
+                "Xbox optical probe: " + opticalStatus));
             modules.Add(Module("providers", false, "Provider migration pending"));
 
             return new JsonObject
@@ -76,6 +87,8 @@ namespace BrimstoneXbox.Services
                 ["modules"] = modules
             };
         }
+
+        public JsonObject BuildOptical() => _optical.LastResult;
 
         static JsonObject Module(string name, bool available, string detail)
         {
