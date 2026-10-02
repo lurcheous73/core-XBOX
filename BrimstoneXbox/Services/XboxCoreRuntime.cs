@@ -78,12 +78,12 @@ namespace BrimstoneXbox.Services
         }
         public JsonObject BuildStack() => _stack.Snapshot();
 
-        public async Task StartAsync(string edition = "core")
+        public async Task StartAsync(string edition = "standalone")
         {
             if (Running) return;
 
             Edition = string.IsNullOrWhiteSpace(edition)
-                ? "core"
+                ? "standalone"
                 : edition.Trim().ToLowerInvariant();
             _startedAt = DateTimeOffset.UtcNow;
 
@@ -286,7 +286,7 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.19"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.20"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
@@ -449,10 +449,10 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.19-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.20-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["hostname"] = JsonValue.CreateStringValue(LocalCoreApiServer.PreferredHostName),
-                ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
+                ["edition"] = JsonValue.CreateStringValue(Edition ?? "standalone"),
                 ["uptime_seconds"] = JsonValue.CreateNumberValue(
                     Math.Max(0, (DateTimeOffset.UtcNow - _startedAt).TotalSeconds)),
                 ["stack"] = _stack.Snapshot(),
@@ -478,8 +478,6 @@ namespace BrimstoneXbox.Services
                 "Playback queue engine available"));
             modules.Add(Module("renderer", true,
                 "MediaPlayer background renderer"));
-            modules.Add(Module("sooloos", true,
-                "Direct Meridian/Sooloos broker compiled"));
 
             var optical = _optical.LastResult;
             var opticalStatus = optical.ContainsKey("status") &&
@@ -493,7 +491,7 @@ namespace BrimstoneXbox.Services
 
             return new JsonObject
             {
-                ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
+                ["edition"] = JsonValue.CreateStringValue(Edition ?? "standalone"),
                 ["api"] = JsonValue.CreateStringValue(_api?.Address ?? ""),
                 ["data_root"] = JsonValue.CreateStringValue(
                     "ApplicationData/LocalFolder/Core"),
