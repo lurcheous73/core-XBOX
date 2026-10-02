@@ -11,12 +11,14 @@ namespace BrimstoneXbox.Services
 {
     public sealed class BluRayAudioService
     {
+        readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         JsonObject _lastScan = State("not_run");
         JsonObject _lastRip = State("idle");
         bool _ripBusy;
 
         public JsonObject LastScan => _lastScan;
         public JsonObject LastRip => _lastRip;
+        public bool Busy => _ripBusy;
 
         public async Task<JsonObject> ScanAsync()
         {
@@ -68,6 +70,8 @@ namespace BrimstoneXbox.Services
 
             var protection = GetBool(scan, "protection_detected");
             var readable = GetBool(scan, "streams_readable");
+            var decrypted = GetBool(scan, "streams_decrypted");
+            var nativeReadable = readable && (!protection || decrypted);
 
             var plan = new JsonObject
             {
@@ -84,10 +88,12 @@ namespace BrimstoneXbox.Services
                 ["preserve_chapters"] = JsonValue.CreateBooleanValue(true),
                 ["protection_detected"] = JsonValue.CreateBooleanValue(protection),
                 ["streams_readable"] = JsonValue.CreateBooleanValue(readable),
+                ["streams_decrypted"] = JsonValue.CreateBooleanValue(decrypted),
+                ["disc_key"] = JsonValue.CreateStringValue(GetString(scan, "disc_key", "")),
                 ["backend"] = JsonValue.CreateStringValue(
-                    protection || !readable ? "makemkv-helper" : "xbox-mkv-remux"),
+                    nativeReadable ? "xbox-mkv-remux" : "makemkv-helper"),
                 ["backend_state"] = JsonValue.CreateStringValue(
-                    protection || !readable ? "helper_required" : "remux_engine_pending"),
+                    nativeReadable ? "remux_engine_pending" : "helper_required"),
                 ["clips"] = title.GetNamedArray("clips", new JsonArray()),
                 ["created_utc"] = JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"))
             };
@@ -105,6 +111,32 @@ namespace BrimstoneXbox.Services
             return plan;
         }
 
+        public async Task<JsonObject> AutoRipCurrentDiscAsync()
+        {
+            var scan = await ScanAsync();
+            if (!GetBool(scan, "available") || GetNumber(scan, "title_count", 0) <= 0)
+                return State("idle");
+
+            var discKey = GetString(scan, "disc_key", "");
+            object saved;
+            var lastKey = _settings.Values.TryGetValue("blurayLastAutoRipKey", out saved)
+                ? saved as string
+                : "";
+
+            if (!string.IsNullOrWhiteSpace(discKey) &&
+                string.Equals(discKey, lastKey, StringComparison.Ordinal))
+                return await CurrentRipStatusAsync();
+
+            var result = await RipSelectedTitleAsync("", false);
+            var state = GetString(result, "state", "");
+
+            if (!string.IsNullOrWhiteSpace(discKey) &&
+                (state == "source_staged" || state == "helper_required"))
+                _settings.Values["blurayLastAutoRipKey"] = discKey;
+
+            return result;
+        }
+
         public async Task<JsonObject> RipSelectedTitleAsync(
             string playlistFile,
             bool keepVideo)
@@ -113,7 +145,7 @@ namespace BrimstoneXbox.Services
                 throw new InvalidOperationException("A Blu-ray rip is already running.");
 
             var plan = await CreateRipPlanAsync(playlistFile, keepVideo);
-            if (GetBool(plan, "protection_detected"))
+            if (string.Equals(GetString(plan, "backend", ""), "makemkv-helper", StringComparison.OrdinalIgnoreCase))
             {
                 _lastRip = new JsonObject
                 {
@@ -125,6 +157,9 @@ namespace BrimstoneXbox.Services
                         "AACS-protected Blu-ray needs a MakeMKV-capable helper with direct access to the optical disc.")
                 };
                 await PersistAsync("bluray-rip-status.json", _lastRip);
+                var completedDiscKey = GetString(plan, "disc_key", "");
+                if (!string.IsNullOrWhiteSpace(completedDiscKey))
+                    _settings.Values["blurayLastAutoRipKey"] = completedDiscKey;
                 return _lastRip;
             }
 
@@ -366,12 +401,19 @@ namespace BrimstoneXbox.Services
             var protection = await HasFolderAsync(volume, "AACS");
             var streamNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var streamsReadable = true;
+            var streamsDecrypted = false;
 
             try
             {
                 var streamFiles = await streamFolder.GetFilesAsync();
                 foreach (var file in streamFiles)
                     streamNames.Add(file.Name ?? "");
+
+                var firstM2ts = streamFiles.FirstOrDefault(file =>
+                    string.Equals(System.IO.Path.GetExtension(file.Name), ".m2ts",
+                        StringComparison.OrdinalIgnoreCase));
+                if (firstM2ts != null)
+                    streamsDecrypted = await LooksLikeReadableM2tsAsync(firstM2ts);
             }
             catch
             {
@@ -438,6 +480,8 @@ namespace BrimstoneXbox.Services
                 ["disc_label"] = JsonValue.CreateStringValue(volume.Name ?? ""),
                 ["protection_detected"] = JsonValue.CreateBooleanValue(protection),
                 ["streams_readable"] = JsonValue.CreateBooleanValue(streamsReadable),
+                ["streams_decrypted"] = JsonValue.CreateBooleanValue(streamsDecrypted),
+                ["disc_key"] = JsonValue.CreateStringValue(BuildDiscKey(volume.Name, unique)),
                 ["title_count"] = JsonValue.CreateNumberValue(unique.Count),
                 ["duplicate_playlists_filtered"] = JsonValue.CreateNumberValue(duplicateCount),
                 ["titles"] = titles,
