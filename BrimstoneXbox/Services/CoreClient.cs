@@ -128,7 +128,7 @@ namespace BrimstoneXbox.Services
                 ["kind"] = JsonValue.CreateStringValue("coreaudio"),
                 ["address"] = JsonValue.CreateStringValue(address),
                 ["protocol_version"] = JsonValue.CreateNumberValue(1),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.3"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.4"),
                 ["capabilities"] = capabilities
             };
 
