@@ -90,6 +90,9 @@ namespace BrimstoneXbox.Services
 
                             var audioSector = await ReadRawAudioSectorAsync(custom, 750);
                             row["raw_sector_10s_test"] = audioSector;
+
+                            row["scsi_read10_probe"] =
+                                await ProbeScsiReadAsync(device.Id);
                         }
                     }
                     catch (Exception ex)
@@ -240,6 +243,157 @@ namespace BrimstoneXbox.Services
             {
                 // Diagnostic persistence must never make optical probing fail.
             }
+        }
+
+        async Task<JsonObject> ProbeScsiReadAsync(string deviceId)
+        {
+            var result = new JsonObject();
+            var reads = new JsonArray();
+            result["reads"] = reads;
+
+            CustomDevice device = null;
+            try
+            {
+                device = await CustomDevice.FromIdAsync(
+                    deviceId,
+                    DeviceAccessMode.ReadWrite,
+                    DeviceSharingMode.Shared);
+
+                result["readwrite_open"] =
+                    JsonValue.CreateBooleanValue(device != null);
+
+                if (device == null)
+                    return result;
+
+                foreach (var lba in new uint[] { 16, 17, 18, 256 })
+                    reads.Add(await ScsiRead10Async(device, lba));
+
+                result["success"] = JsonValue.CreateBooleanValue(
+                    reads.Any(v =>
+                        v.ValueType == JsonValueType.Object &&
+                        v.GetObject().ContainsKey("success") &&
+                        v.GetObject()["success"].ValueType == JsonValueType.Boolean &&
+                        v.GetObject()["success"].GetBoolean()));
+            }
+            catch (Exception ex)
+            {
+                result["readwrite_open"] = JsonValue.CreateBooleanValue(false);
+                result["success"] = JsonValue.CreateBooleanValue(false);
+                result["error"] = JsonValue.CreateStringValue(Describe(ex));
+            }
+
+            return result;
+        }
+
+        static async Task<JsonObject> ScsiRead10Async(
+            CustomDevice device,
+            uint lba)
+        {
+            // IOCTL_SCSI_PASS_THROUGH:
+            // CTL_CODE(FILE_DEVICE_CONTROLLER=4, 0x0401,
+            //          METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+            //
+            // x64 SCSI_PASS_THROUGH is 56 bytes:
+            // CDB at +36, sense buffer at +56, data buffer at +88.
+            const int sptSize = 56;
+            const int senseSize = 32;
+            const int dataOffset = 88;
+            const int sectorBytes = 2048;
+            const int packetBytes = dataOffset + sectorBytes;
+
+            var packet = new byte[packetBytes];
+
+            WriteUInt16Le(packet, 0, sptSize);
+            packet[6] = 10;                 // CdbLength
+            packet[7] = senseSize;          // SenseInfoLength
+            packet[8] = 1;                  // SCSI_IOCTL_DATA_IN
+            WriteUInt32Le(packet, 12, sectorBytes);
+            WriteUInt32Le(packet, 16, 10);  // timeout seconds
+            WriteUInt64Le(packet, 24, dataOffset);
+            WriteUInt32Le(packet, 32, sptSize);
+
+            // READ(10)
+            packet[36] = 0x28;
+            packet[38] = (byte)((lba >> 24) & 0xFF);
+            packet[39] = (byte)((lba >> 16) & 0xFF);
+            packet[40] = (byte)((lba >> 8) & 0xFF);
+            packet[41] = (byte)(lba & 0xFF);
+            packet[43] = 0x00;
+            packet[44] = 0x01;              // one logical block
+
+            IBuffer input;
+            using (var writer = new DataWriter())
+            {
+                writer.WriteBytes(packet);
+                input = writer.DetachBuffer();
+            }
+
+            var output = new WinBuffer(packetBytes);
+            var ioctl = new IOControlCode(
+                (ushort)0x0004,
+                (ushort)0x0401,
+                IOControlAccessMode.ReadWrite,
+                IOControlBufferingMethod.Buffered);
+
+            var ok = await device.TrySendIOControlAsync(ioctl, input, output);
+
+            var row = new JsonObject
+            {
+                ["lba"] = JsonValue.CreateNumberValue(lba),
+                ["ioctl"] = JsonValue.CreateStringValue("IOCTL_SCSI_PASS_THROUGH/READ10"),
+                ["success"] = JsonValue.CreateBooleanValue(ok),
+                ["bytes"] = JsonValue.CreateNumberValue(output.Length)
+            };
+
+            if (!ok || output.Length < dataOffset + sectorBytes)
+                return row;
+
+            byte[] bytes;
+            using (var reader = DataReader.FromBuffer(output))
+            {
+                bytes = new byte[output.Length];
+                reader.ReadBytes(bytes);
+            }
+
+            row["scsi_status"] = JsonValue.CreateNumberValue(bytes[2]);
+
+            var preview = new byte[32];
+            Array.Copy(bytes, dataOffset, preview, 0, preview.Length);
+            row["first_32_hex"] = JsonValue.CreateStringValue(
+                BitConverter.ToString(preview).Replace("-", ""));
+
+            var idLength = Math.Min(5, sectorBytes - 1);
+            var id = System.Text.Encoding.ASCII.GetString(
+                bytes, dataOffset + 1, idLength);
+            row["vrs_id"] = JsonValue.CreateStringValue(id);
+
+            if (lba == 256)
+            {
+                var tagId =
+                    bytes[dataOffset] |
+                    (bytes[dataOffset + 1] << 8);
+                row["udf_tag_id"] = JsonValue.CreateNumberValue(tagId);
+            }
+
+            return row;
+        }
+
+        static void WriteUInt16Le(byte[] data, int offset, int value)
+        {
+            data[offset] = (byte)(value & 0xFF);
+            data[offset + 1] = (byte)((value >> 8) & 0xFF);
+        }
+
+        static void WriteUInt32Le(byte[] data, int offset, long value)
+        {
+            for (var i = 0; i < 4; i++)
+                data[offset + i] = (byte)((value >> (8 * i)) & 0xFF);
+        }
+
+        static void WriteUInt64Le(byte[] data, int offset, long value)
+        {
+            for (var i = 0; i < 8; i++)
+                data[offset + i] = (byte)((value >> (8 * i)) & 0xFF);
         }
 
         async Task<JsonObject> ReadRawAudioSectorAsync(CustomDevice device, long sector)
