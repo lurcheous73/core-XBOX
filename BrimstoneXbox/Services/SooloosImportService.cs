@@ -368,9 +368,8 @@ namespace BrimstoneXbox.Services
 
                 var sourceSha = await Sha256Async(item.File);
 
-                using (var source = await item.File.OpenStreamForReadAsync())
                 using (var request = new HttpRequestMessage(HttpMethod.Put, uri))
-                using (var content = new StreamContent(source))
+                using (var content = await StorageFileHttpContent.CreateAsync(item.File))
                 {
                     content.Headers.ContentType =
                         new MediaTypeHeaderValue("application/octet-stream");
