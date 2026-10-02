@@ -86,7 +86,8 @@ namespace BrimstoneXbox.Services
                     Title = title,
                     Artist = artist,
                     AddedAt = folder.DateCreated,
-                    IsFavourite = IsFavourite(fingerprint)
+                    IsFavourite = IsFavourite(fingerprint),
+                    SourceKind = "cd"
                 };
 
                 try
@@ -146,8 +147,163 @@ namespace BrimstoneXbox.Services
                 result.Add(album);
             }
 
+            idBase = await LoadBluRayAlbumsAsync(ingest, result, idBase);
+
             await PersistDatabaseAsync(result);
             return result;
+        }
+
+        async Task<long> LoadBluRayAlbumsAsync(
+            StorageFolder ingest,
+            List<CoreAlbum> result,
+            long idBase)
+        {
+            StorageFolder bluRayRoot;
+            try
+            {
+                bluRayRoot = await ingest.GetFolderAsync("BluRay");
+            }
+            catch
+            {
+                return idBase;
+            }
+
+            var jobs = await bluRayRoot.GetFoldersAsync();
+            foreach (var job in jobs)
+            {
+                JsonObject manifest;
+                try
+                {
+                    var manifestFile =
+                        await job.GetFileAsync("title-manifest.json");
+                    if (!JsonObject.TryParse(
+                        await FileIO.ReadTextAsync(manifestFile),
+                        out manifest))
+                        continue;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!string.Equals(
+                    StringValue(manifest, "state", ""),
+                    "source_staged",
+                    StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var staged = new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+                if (manifest.ContainsKey("staged_files") &&
+                    manifest["staged_files"].ValueType == JsonValueType.Array)
+                {
+                    foreach (var value in manifest.GetNamedArray("staged_files"))
+                    {
+                        if (value.ValueType != JsonValueType.Object)
+                            continue;
+                        var row = value.GetObject();
+                        var source = StringValue(row, "source", "");
+                        var file = StringValue(row, "file", "");
+                        if (!string.IsNullOrWhiteSpace(source) &&
+                            !string.IsNullOrWhiteSpace(file))
+                            staged[source] = file;
+                    }
+                }
+
+                if (staged.Count == 0 ||
+                    !manifest.ContainsKey("clips") ||
+                    manifest["clips"].ValueType != JsonValueType.Array)
+                    continue;
+
+                var discKey = StringValue(
+                    manifest,
+                    "disc_key",
+                    job.Name);
+                var playlistId = StringValue(
+                    manifest,
+                    "playlist_id",
+                    "title");
+                var title = StringValue(
+                    manifest,
+                    "album",
+                    StringValue(
+                        manifest,
+                        "disc_label",
+                        "Blu-ray Audio"));
+                var artist = StringValue(
+                    manifest,
+                    "artist",
+                    "Unknown Artist");
+                var albumId =
+                    "bluray:" + discKey + ":" + playlistId;
+
+                var album = new CoreAlbum
+                {
+                    Id = albumId,
+                    Title = title,
+                    Artist = artist,
+                    AddedAt = job.DateCreated,
+                    IsFavourite = IsFavourite(albumId),
+                    SourceKind = "bluray"
+                };
+
+                var clips = manifest.GetNamedArray("clips");
+                var part = 1;
+                foreach (var value in clips)
+                {
+                    if (value.ValueType != JsonValueType.Object)
+                        continue;
+
+                    var clip = value.GetObject();
+                    var source = StringValue(
+                        clip,
+                        "stream_file",
+                        "");
+                    string storedName;
+                    if (string.IsNullOrWhiteSpace(source) ||
+                        !staged.TryGetValue(source, out storedName))
+                        continue;
+
+                    var inTime = NumberValue(
+                        clip,
+                        "in_time",
+                        0);
+                    var outTime = NumberValue(
+                        clip,
+                        "out_time",
+                        inTime);
+                    var start = Math.Max(0, inTime / 45000.0);
+                    var duration = Math.Max(
+                        0,
+                        (outTime - inTime) / 45000.0);
+
+                    album.Tracks.Add(new CoreTrack
+                    {
+                        Id = idBase++,
+                        Title = clips.Count == 1
+                            ? "Blu-ray Programme"
+                            : "Part " + part.ToString("00"),
+                        Artist = artist,
+                        Album = title,
+                        DurationSeconds = duration,
+                        StartSeconds = start,
+                        DurationLimitSeconds = duration,
+                        LocalPath = Path.Combine(
+                            "Core",
+                            "Ingest",
+                            "BluRay",
+                            job.Name,
+                            "SOURCE",
+                            storedName)
+                    });
+                    part++;
+                }
+
+                if (album.Tracks.Count > 0)
+                    result.Add(album);
+            }
+
+            return idBase;
         }
 
         async Task PersistDatabaseAsync(List<CoreAlbum> albums)
@@ -188,7 +344,8 @@ namespace BrimstoneXbox.Services
                         ["id"] = JsonValue.CreateStringValue(album.Id ?? ""),
                         ["title"] = JsonValue.CreateStringValue(album.Title ?? ""),
                         ["artist"] = JsonValue.CreateStringValue(album.Artist ?? ""),
-                        ["track_count"] = JsonValue.CreateNumberValue(album.Tracks.Count)
+                        ["track_count"] = JsonValue.CreateNumberValue(album.Tracks.Count),
+                        ["source_kind"] = JsonValue.CreateStringValue(album.SourceKind ?? "local")
                     });
 
                     var position = 1;
@@ -203,6 +360,8 @@ namespace BrimstoneXbox.Services
                             ["artist"] = JsonValue.CreateStringValue(track.Artist ?? ""),
                             ["album"] = JsonValue.CreateStringValue(track.Album ?? ""),
                             ["duration_seconds"] = JsonValue.CreateNumberValue(track.DurationSeconds),
+                            ["start_seconds"] = JsonValue.CreateNumberValue(track.StartSeconds),
+                            ["duration_limit_seconds"] = JsonValue.CreateNumberValue(track.DurationLimitSeconds),
                             ["local_path"] = JsonValue.CreateStringValue(track.LocalPath ?? "")
                         });
                     }
@@ -284,8 +443,14 @@ namespace BrimstoneXbox.Services
                 {
                     ["id"] = JsonValue.CreateStringValue((album.Id ?? "") + ":xbox"),
                     ["title"] = JsonValue.CreateStringValue(album.Title ?? ""),
-                    ["media_type"] = JsonValue.CreateStringValue("cd"),
-                    ["source_format"] = JsonValue.CreateStringValue("wav"),
+                    ["media_type"] = JsonValue.CreateStringValue(
+                        string.Equals(album.SourceKind, "bluray", StringComparison.OrdinalIgnoreCase)
+                            ? "bluray_audio"
+                            : "cd"),
+                    ["source_format"] = JsonValue.CreateStringValue(
+                        string.Equals(album.SourceKind, "bluray", StringComparison.OrdinalIgnoreCase)
+                            ? "m2ts"
+                            : "wav"),
                     ["tracks"] = tracks
                 };
                 var editions = new JsonArray();
@@ -338,23 +503,20 @@ namespace BrimstoneXbox.Services
                 foreach (var track in album.Tracks)
                     byId[track.Id] = track;
 
-            var paths = new List<string>();
-            var sources = new JsonArray();
+            var tracks = new List<CoreTrack>();
             foreach (var id in ids)
             {
                 CoreTrack track;
                 if (!byId.TryGetValue(id, out track))
                     continue;
-
-                paths.Add(track.LocalPath);
-                sources.Add(TrackMetadata(track));
+                tracks.Add(track);
             }
 
-            if (paths.Count == 0)
+            if (tracks.Count == 0)
                 throw new InvalidOperationException("None of the requested Xbox Core tracks were found.");
 
             await PlaybackService.Instance.PlayLocalProgrammeAsync(
-                paths, sources, volume, 0);
+                tracks, volume, 0);
         }
 
         public async Task PlayTrackAsync(CoreTrack track, double volume = 0.70)
@@ -364,7 +526,12 @@ namespace BrimstoneXbox.Services
 
             var source = TrackMetadata(track);
             await PlaybackService.Instance.PlayLocalFileAsync(
-                track.LocalPath, source, volume, 0);
+                track.LocalPath,
+                source,
+                volume,
+                0,
+                track.StartSeconds,
+                track.DurationLimitSeconds);
         }
 
         public async Task PlayAlbumAsync(CoreAlbum album, double volume = 0.70)
@@ -372,22 +539,19 @@ namespace BrimstoneXbox.Services
             if (album == null || album.Tracks.Count == 0)
                 throw new InvalidOperationException("Album has no local tracks.");
 
-            var paths = new List<string>();
-            var sources = new JsonArray();
-
+            var tracks = new List<CoreTrack>();
             foreach (var track in album.Tracks)
             {
-                if (string.IsNullOrWhiteSpace(track.LocalPath))
+                if (track == null || string.IsNullOrWhiteSpace(track.LocalPath))
                     continue;
-                paths.Add(track.LocalPath);
-                sources.Add(TrackMetadata(track));
+                tracks.Add(track);
             }
 
-            if (paths.Count == 0)
+            if (tracks.Count == 0)
                 throw new InvalidOperationException("Album has no Xbox-local media.");
 
             await PlaybackService.Instance.PlayLocalProgrammeAsync(
-                paths, sources, volume, 0);
+                tracks, volume, 0);
         }
 
         static JsonObject TrackMetadata(CoreTrack track)
