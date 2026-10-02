@@ -9,7 +9,6 @@ namespace BrimstoneXbox.Services
     {
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         LocalCoreApiServer _api;
-        readonly XboxOpticalProbe _optical = new XboxOpticalProbe();
         readonly OpticalProbeService _optical = new OpticalProbeService();
         readonly CdRipService _cdRip = new CdRipService();
         DateTimeOffset _startedAt;
