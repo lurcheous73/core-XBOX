@@ -28,6 +28,7 @@ namespace BrimstoneXbox.Services
         string _audioOutputName = "Xbox system output";
         string _audioOutputId = "";
         bool _stopped;
+        bool _backgroundMode;
 
         public event EventHandler StateChanged;
 
@@ -42,6 +43,11 @@ namespace BrimstoneXbox.Services
                 AutoPlay = false,
                 Volume = 0.70
             };
+
+            // Keep the MediaPlayer attached to the platform command manager.
+            // With backgroundMediaPlayback in the manifest this is the Xbox/Windows
+            // single-process background-audio path and keeps Guide/SMTC controls live.
+            _player.CommandManager.IsEnabled = true;
 
             _player.PlaybackSession.PlaybackStateChanged += (s,e) => Changed();
             _player.MediaEnded += (s,e) => { _stopped = true; Changed(); };
@@ -511,7 +517,42 @@ namespace BrimstoneXbox.Services
             Changed();
         }
 
-        public void SaveState() { }
+        public bool BackgroundMode => _backgroundMode;
+
+        public void SetBackgroundMode(bool value)
+        {
+            _backgroundMode = value;
+
+            // Do not tear down or replace MediaPlayer when the TV shell loses
+            // foreground. Active playback keeps the app alive under the
+            // background-media policy.
+            try
+            {
+                _player.CommandManager.IsEnabled = true;
+            }
+            catch { }
+
+            Changed();
+        }
+
+        public void SaveState()
+        {
+            try
+            {
+                _settings.Values["playbackLastState"] =
+                    _stopped
+                        ? "stopped"
+                        : StateName(_player.PlaybackSession.PlaybackState);
+                _settings.Values["playbackLastPosition"] =
+                    _player.PlaybackSession.Position.TotalSeconds;
+                _settings.Values["playbackLastTitle"] = _title ?? "";
+                _settings.Values["playbackLastArtist"] = _artist ?? "";
+                _settings.Values["playbackLastAlbum"] = _album ?? "";
+                _settings.Values["playbackBackgroundMode"] =
+                    _backgroundMode;
+            }
+            catch { }
+        }
 
         static async Task<StorageFile> ResolveLocalFileAsync(string relativePath)
         {
