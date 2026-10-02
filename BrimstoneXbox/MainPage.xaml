@@ -6,6 +6,37 @@
     Background="{StaticResource BrimstoneBackground}"
     KeyDown="Page_KeyDown">
 
+    <Page.Resources>
+        <DataTemplate x:Key="AlbumRailTemplate" x:DataType="models:CoreAlbum">
+            <Border Width="214" Height="256" Margin="7" CornerRadius="14"
+                    Background="#191920" BorderBrush="#34313D" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="190"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Margin="8,8,8,0" CornerRadius="10" Background="#2A2035">
+                        <Grid>
+                            <TextBlock Text="◉" FontSize="64" Foreground="#A47AFF"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
+                            <Border Background="#C20A0A0D" VerticalAlignment="Bottom" Padding="9,5">
+                                <TextBlock Text="{x:Bind Artist}" FontSize="13"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <StackPanel Grid.Row="1" Margin="12,9,12,8">
+                        <TextBlock Text="{x:Bind Title}" FontSize="17" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{x:Bind Meta}" FontSize="12"
+                                   Foreground="{StaticResource BrimstoneMuted}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+
     <Viewbox Stretch="Uniform" StretchDirection="Both">
         <Grid Width="1600" Height="900" Background="{StaticResource BrimstoneBackground}">
 
@@ -175,58 +206,179 @@
 
                 <Grid Grid.Row="1" Margin="48,28,48,22">
                     <Grid x:Name="MusicPanel">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
+                        <ScrollViewer VerticalScrollMode="Enabled"
+                                      VerticalScrollBarVisibility="Hidden"
+                                      HorizontalScrollMode="Disabled"
+                                      HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
-                                <TextBlock Text="Your Music" FontSize="46" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="LibrarySummaryText" Text="Loading library…" FontSize="19" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
-                            </StackPanel>
-                            <Button Grid.Column="1" Content="Refresh" VerticalAlignment="Bottom" Click="RefreshButton_Click"/>
-                        </Grid>
 
-                        <GridView x:Name="AlbumGrid" Grid.Row="1" Margin="-8,22,-8,0"
-                                  IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick" SelectionMode="None"
-                                  ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                  ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                            <GridView.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1" ItemWidth="250" ItemHeight="315"/>
-                                </ItemsPanelTemplate>
-                            </GridView.ItemsPanel>
-                            <GridView.ItemTemplate>
-                                <DataTemplate x:DataType="models:CoreAlbum">
-                                    <Border Width="232" Height="296" Margin="8" CornerRadius="18" Background="#191920"
-                                            BorderBrush="#34313D" BorderThickness="1">
-                                        <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="218"/>
-                                                <RowDefinition Height="*"/>
-                                            </Grid.RowDefinitions>
-                                            <Border Margin="10,10,10,0" CornerRadius="13" Background="#2A2035">
+                                <!-- Hero: current playback, or the newest album when idle. -->
+                                <Border x:Name="HomeHeroBorder" Height="250" CornerRadius="22"
+                                        BorderBrush="#3C3448" BorderThickness="1" Margin="0,0,0,24">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#2B183D" Offset="0"/>
+                                            <GradientStop Color="#15151C" Offset="0.56"/>
+                                            <GradientStop Color="#0D0D12" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Grid Clip="True">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="390"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Margin="38,28,20,28" VerticalAlignment="Center">
+                                            <TextBlock x:Name="HeroEyebrowText" Text="BRIMSTONE CORE"
+                                                       FontSize="14" FontWeight="Bold" Foreground="#C6A1FF"/>
+                                            <TextBlock x:Name="HeroTitleText" Text="Your Music"
+                                                       FontSize="46" FontWeight="SemiBold" TextWrapping="Wrap"
+                                                       MaxWidth="780" Margin="0,8,0,4"/>
+                                            <TextBlock x:Name="HeroArtistText" Text="Xbox Core is ready"
+                                                       FontSize="22" Foreground="{StaticResource BrimstoneMuted}"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="760"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                                                <Button x:Name="HeroPlayButton" Content="▶  Play"
+                                                        MinWidth="170" Background="{StaticResource BrimstoneAccent}"
+                                                        Click="HeroPlayButton_Click"/>
+                                                <Button Content="Rip a CD" MinWidth="150"
+                                                        Click="HeroRipButton_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <Grid Grid.Column="1">
+                                            <Rectangle>
+                                                <Rectangle.Fill>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                        <GradientStop Color="#FF0F0F14" Offset="0"/>
+                                                        <GradientStop Color="#000F0F14" Offset="0.45"/>
+                                                    </LinearGradientBrush>
+                                                </Rectangle.Fill>
+                                            </Rectangle>
+                                            <Border Width="224" Height="224" HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center" Margin="0,0,28,0"
+                                                    CornerRadius="18" Background="#2A2035">
                                                 <Grid>
-                                                    <TextBlock Text="◉" FontSize="72" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
-                                                    <Border Background="#BB0A0A0D" VerticalAlignment="Bottom" Padding="10,6">
-                                                        <TextBlock Text="{x:Bind Artist}" FontSize="14" TextTrimming="CharacterEllipsis"/>
-                                                    </Border>
+                                                    <TextBlock Text="◉" FontSize="82" Foreground="#A47AFF"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <Image x:Name="HeroArtworkImage" Stretch="UniformToFill"/>
                                                 </Grid>
                                             </Border>
-                                            <StackPanel Grid.Row="1" Margin="14,11">
-                                                <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="{x:Bind Meta}" FontSize="13" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,0"/>
-                                            </StackPanel>
                                         </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </GridView.ItemTemplate>
-                        </GridView>
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel x:Name="ContinueSection" Visibility="Collapsed" Margin="0,0,0,22">
+                                    <TextBlock Text="Continue Listening" FontSize="27" FontWeight="SemiBold"
+                                               Margin="2,0,0,8"/>
+                                    <GridView x:Name="ContinueGrid" Height="270"
+                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
+                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
+                                              SelectionMode="None"
+                                              ScrollViewer.HorizontalScrollMode="Enabled"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                              ScrollViewer.VerticalScrollMode="Disabled"
+                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
+                                                               ItemWidth="228" ItemHeight="270"/>
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+
+                                <StackPanel x:Name="RecentSection" Margin="0,0,0,22">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Recently Added" FontSize="27" FontWeight="SemiBold"/>
+                                            <TextBlock x:Name="LibrarySummaryText" Text="Loading library…"
+                                                       FontSize="14" Foreground="{StaticResource BrimstoneMuted}"
+                                                       Margin="2,3,0,0"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Refresh" VerticalAlignment="Bottom"
+                                                Click="RefreshButton_Click"/>
+                                    </Grid>
+                                    <GridView x:Name="RecentlyAddedGrid" Height="270" Margin="-7,8,-7,0"
+                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
+                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
+                                              SelectionMode="None"
+                                              ScrollViewer.HorizontalScrollMode="Enabled"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                              ScrollViewer.VerticalScrollMode="Disabled"
+                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
+                                                               ItemWidth="228" ItemHeight="270"/>
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+
+                                <StackPanel Margin="0,0,0,22">
+                                    <TextBlock Text="Your Albums" FontSize="27" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                                    <GridView x:Name="AlbumGrid" Height="270" Margin="-7,0,-7,0"
+                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
+                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
+                                              SelectionMode="None"
+                                              ScrollViewer.HorizontalScrollMode="Enabled"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                              ScrollViewer.VerticalScrollMode="Disabled"
+                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
+                                                               ItemWidth="228" ItemHeight="270"/>
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+
+                                <StackPanel x:Name="RecentlyRippedSection" Margin="0,0,0,22">
+                                    <TextBlock Text="Recently Ripped" FontSize="27" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                                    <GridView x:Name="RecentlyRippedGrid" Height="270" Margin="-7,0,-7,0"
+                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
+                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
+                                              SelectionMode="None"
+                                              ScrollViewer.HorizontalScrollMode="Enabled"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                              ScrollViewer.VerticalScrollMode="Disabled"
+                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
+                                                               ItemWidth="228" ItemHeight="270"/>
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+
+                                <StackPanel x:Name="FavouriteSection" Visibility="Collapsed" Margin="0,0,0,24">
+                                    <TextBlock Text="Favourites" FontSize="27" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                                    <GridView x:Name="FavouritesGrid" Height="270" Margin="-7,0,-7,0"
+                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
+                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
+                                              SelectionMode="None"
+                                              ScrollViewer.HorizontalScrollMode="Enabled"
+                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                              ScrollViewer.VerticalScrollMode="Disabled"
+                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <GridView.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
+                                                               ItemWidth="228" ItemHeight="270"/>
+                                            </ItemsPanelTemplate>
+                                        </GridView.ItemsPanel>
+                                    </GridView>
+                                </StackPanel>
+
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
 
                     <Grid x:Name="AlbumPanel" Visibility="Collapsed">
@@ -251,8 +403,15 @@
                             <StackPanel Grid.Row="1" Margin="4,26,0,22">
                                 <TextBlock x:Name="AlbumTitleText" FontSize="48" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                 <TextBlock x:Name="AlbumArtistText" FontSize="25" Foreground="{StaticResource BrimstoneMuted}" Margin="0,6,0,0"/>
-                                <Button x:Name="PlayAlbumButton" Content="▶  Play album" Background="{StaticResource BrimstoneAccent}"
-                                        HorizontalAlignment="Left" MinWidth="210" Margin="0,22,0,0" Click="PlayAlbumButton_Click"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                                    <Button x:Name="PlayAlbumButton" Content="▶  Play album"
+                                            Background="{StaticResource BrimstoneAccent}"
+                                            HorizontalAlignment="Left" MinWidth="210"
+                                            Click="PlayAlbumButton_Click"/>
+                                    <Button x:Name="FavouriteAlbumButton" Content="♡  Favourite"
+                                            HorizontalAlignment="Left" MinWidth="180"
+                                            Click="FavouriteAlbumButton_Click"/>
+                                </StackPanel>
                             </StackPanel>
                             <ListView x:Name="TracksList" Grid.Row="2" IsItemClickEnabled="True" ItemClick="TracksList_ItemClick"
                                       SelectionMode="None">
