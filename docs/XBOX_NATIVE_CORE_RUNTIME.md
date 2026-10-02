@@ -11,8 +11,9 @@ facilities required to run the normal Linux Docker daemon, so the Xbox build pre
 Core Compose service graph and API contracts while implementing each service as an
 Xbox-compatible module supervised inside the Brimstone package.
 
-Core edition must not require a second Brimstone Core to boot or play Xbox-local media.
-An external Core may be attached only as an optional migration/library bridge.
+Xbox is a standalone Brimstone Core. It boots, browses, rips and plays Xbox-local media
+without any external Core or Sooloos dependency. Another Brimstone Core may be attached
+only as an optional transfer destination.
 
 ## Compose-compatible stack
 
@@ -21,7 +22,7 @@ The Xbox supervisor keeps the canonical Docker Compose service identities:
 | Compose service | Xbox implementation |
 | --- | --- |
 | core-postgres | Embedded persistent Core catalogue authority under LocalState/Core/Catalogue |
-| core-cast | Native MediaPlayer renderer and cast/Sooloos broker |
+| core-cast | Native MediaPlayer renderer and local playback broker |
 | surroundcore | Native Xbox Core authority |
 | surroundcore-web | StreamSocket Core HTTP/API surface |
 | surround-ingest | CustomDevice optical ingest, raw CDDA reader and disc watcher |
@@ -44,7 +45,6 @@ and exposed through:
 - Catalogue: embedded persistent compatibility store plus native media scan.
 - Queue/session: native MediaPlayer queue.
 - Renderer: Windows MediaPlayer with background-media capability.
-- Sooloos: direct Meridian/Sooloos broker.
 - Ingest: native CustomDevice optical service with periodic insert detection.
 - Providers: migrate provider adapters individually where compatible with Xbox constraints.
 
@@ -66,11 +66,11 @@ Core/
 
 ## Native Core behaviour implemented
 
-- Core/Sooloos first-run personality.
-- Core mode boots the local Xbox Core stack without external login.
+- No edition chooser: Xbox boots directly as a standalone Core.
+- Standalone Core boots the local Xbox Core stack without external login.
 - Xbox-local ripped albums appear in Your Music.
 - Local tracks/programmes play directly from AppContainer storage.
-- Native queue and transport are used in Core mode.
+- Native queue and transport are used by the standalone Core.
 - External Core connection remains optional for migration/testing.
 - Optical service watches for newly inserted audio CDs every 8 seconds.
 - Completed rips persist per-track SHA-256 data and eject the disc.
