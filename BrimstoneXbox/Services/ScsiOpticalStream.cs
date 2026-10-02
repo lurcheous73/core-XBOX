@@ -177,16 +177,49 @@ namespace BrimstoneXbox.Services
 
         byte[] GetSector(uint lba)
         {
-            if (_cachedSector != null && _cachedLba == lba)
-                return _cachedSector;
+            var cacheHit =
+                _cacheData != null &&
+                _cacheStartLba != uint.MaxValue &&
+                lba >= _cacheStartLba &&
+                lba < _cacheStartLba + (uint)_cacheSectorCount;
 
-            var data = ReadSectorAsync(lba).GetAwaiter().GetResult();
-            if (data.Length != _sectorSize)
-                throw new IOException("Short optical sector read at LBA " + lba + ".");
+            if (!cacheHit)
+            {
+                var totalSectors =
+                    (uint)Math.Max(0, _length / _sectorSize);
+                var available = totalSectors > lba
+                    ? totalSectors - lba
+                    : 0;
+                var count = (ushort)Math.Min(
+                    CacheSectors,
+                    available);
+                if (count == 0)
+                    throw new EndOfStreamException(
+                        "Optical read moved past the end of media.");
 
-            _cachedLba = lba;
-            _cachedSector = data;
-            return data;
+                _cacheData = ReadSectorsAsync(
+                    lba,
+                    count).GetAwaiter().GetResult();
+                if (_cacheData.Length !=
+                    checked(_sectorSize * count))
+                    throw new IOException(
+                        "Short optical sector batch read at LBA " +
+                        lba + ".");
+
+                _cacheStartLba = lba;
+                _cacheSectorCount = count;
+            }
+
+            var sector = new byte[_sectorSize];
+            var offset = checked(
+                (int)(lba - _cacheStartLba) * _sectorSize);
+            Array.Copy(
+                _cacheData,
+                offset,
+                sector,
+                0,
+                _sectorSize);
+            return sector;
         }
 
         public override int Read(byte[] buffer, int offset, int count)
