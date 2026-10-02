@@ -414,6 +414,12 @@
                                     <Button x:Name="FavouriteAlbumButton" Content="♡  Favourite"
                                             HorizontalAlignment="Left" MinWidth="180"
                                             Click="FavouriteAlbumButton_Click"/>
+                                    <Button x:Name="SendToCoreButton" Content="⇧  Send to Core"
+                                            HorizontalAlignment="Left" MinWidth="180"
+                                            Click="SendToCoreButton_Click"/>
+                                    <Button x:Name="SendToSooloosButton" Content="⇧  Send to Sooloos"
+                                            HorizontalAlignment="Left" MinWidth="210"
+                                            Click="SendToSooloosButton_Click"/>
                                 </StackPanel>
                             </StackPanel>
                             <ListView x:Name="TracksList" Grid.Row="2" IsItemClickEnabled="True" ItemClick="TracksList_ItemClick"
@@ -553,26 +559,77 @@
                             <TextBlock Text="The boring stuff stays deliberately small." FontSize="19" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
                         </StackPanel>
                         <Grid Grid.Row="1" Margin="0,26,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="20"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="1*"/>
                                 <ColumnDefinition Width="24"/>
                                 <ColumnDefinition Width="1*"/>
                             </Grid.ColumnDefinitions>
-                            <Border Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="28">
+
+                            <Border Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="24">
                                 <StackPanel>
                                     <TextBlock Text="Edition" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock x:Name="SettingsEditionText" Text="Core" FontSize="28" FontWeight="SemiBold" Margin="0,4,0,16"/>
-                                    <Button Content="Choose Core / Sooloos again" HorizontalAlignment="Left" Click="ChangeEditionButton_Click"/>
+                                    <TextBlock x:Name="SettingsEditionText" Text="Core" FontSize="28" FontWeight="SemiBold" Margin="0,4,0,8"/>
+                                    <TextBlock Text="Chosen on first setup. Xbox starts straight into this mode from now on."
+                                               FontSize="15" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
-                            <Border Grid.Column="2" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="28">
+
+                            <Border Grid.Column="2" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="24">
                                 <StackPanel>
-                                    <TextBlock Text="Connection" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock x:Name="SettingsCoreText" Text="Not configured" FontSize="21" TextWrapping="Wrap" Margin="0,4,0,14"/>
-                                    <TextBlock Text="Xbox renderer" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock x:Name="SettingsEndpointText" FontSize="15" TextWrapping="Wrap" Margin="0,4,0,14"/>
-                                    <Button Content="Reconnect" HorizontalAlignment="Left" Click="ReconnectButton_Click"/>
+                                    <TextBlock Text="Xbox Core" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
+                                    <TextBlock Text="xbox-core.local" FontSize="27" FontWeight="SemiBold" Margin="0,4,0,8"/>
+                                    <TextBlock x:Name="SettingsCoreText" Text="Not configured" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="SettingsEndpointText" FontSize="13" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
                                 </StackPanel>
+                            </Border>
+
+                            <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#17171D" BorderBrush="#34313D"
+                                    BorderThickness="1" CornerRadius="20" Padding="24">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1*"/>
+                                        <ColumnDefinition Width="26"/>
+                                        <ColumnDefinition Width="1*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel>
+                                        <TextBlock Text="Other Brimstone Core" FontSize="17" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Sign in once, then albums can be sent with checksum verification."
+                                                   FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,8"/>
+                                        <TextBox x:Name="TransferCoreUrlBox" PlaceholderText="http://core-audio.local:8080"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1*"/>
+                                                <ColumnDefinition Width="16"/>
+                                                <ColumnDefinition Width="1*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="TransferCoreUsernameBox" Text="admin"/>
+                                            <PasswordBox x:Name="TransferCorePasswordBox" Grid.Column="2" PasswordRevealMode="Peek"/>
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Connect Core" Click="TransferCoreConnectButton_Click"/>
+                                            <TextBlock x:Name="TransferCoreStatusText" VerticalAlignment="Center"
+                                                       FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="10,0,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Meridian / Sooloos" FontSize="17" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Save a Core address once; local Xbox albums can then import directly."
+                                                   FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,8"/>
+                                        <TextBox x:Name="TransferSooloosHostBox" PlaceholderText="10.26.30.19"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Connect Sooloos" Click="TransferSooloosConnectButton_Click"/>
+                                            <TextBlock x:Name="TransferSooloosStatusText" VerticalAlignment="Center"
+                                                       FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="10,0,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                             </Border>
                         </Grid>
                     </Grid>
