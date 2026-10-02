@@ -68,6 +68,9 @@ namespace BrimstoneXbox
                 ? "http://10.26.30.20:8080"
                 : _core.BaseUrl;
             SooloosHostBox.Text = ReadSetting(SooloosHostSetting);
+            TransferCoreUrlBox.Text = _core.BaseUrl ?? "";
+            TransferCoreUsernameBox.Text = "admin";
+            TransferSooloosHostBox.Text = ReadSetting(SooloosHostSetting);
 
             var saved = ReadSetting(EditionSetting).ToLowerInvariant();
             if (saved != "core" && saved != "sooloos")
@@ -431,6 +434,13 @@ namespace BrimstoneXbox
                 ? "♥  Favourite"
                 : "♡  Favourite";
 
+            SendToCoreButton.Visibility = _mode == "core"
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            SendToSooloosButton.Visibility = _mode == "core"
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
             if (_mode == "core")
             {
                 TracksList.Visibility = Visibility.Visible;
@@ -501,6 +511,78 @@ namespace BrimstoneXbox
 
             await LoadLibrary();
             Toast(favourite ? "Added to Favourites" : "Removed from Favourites");
+        }
+
+        async void SendToCoreButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_mode != "core" || _album == null)
+                return;
+
+            if (!_core.HasSavedLogin)
+            {
+                UpdateSettings();
+                ShowContent(SettingsPanel);
+                TransferCoreUrlBox.Focus(FocusState.Programmatic);
+                Toast("Connect the destination Core first");
+                return;
+            }
+
+            SendToCoreButton.IsEnabled = false;
+            try
+            {
+                Toast("Sending album to Core…");
+                var result = await _core.ImportAlbumAsync(_album);
+                var imported = JsonNumber(result, "imported", 0);
+                var existing = JsonNumber(result, "already_present", 0);
+                Toast("Core transfer complete · " +
+                    imported.ToString("0") + " imported" +
+                    (existing > 0 ? " · " + existing.ToString("0") + " already there" : ""));
+            }
+            catch (Exception ex)
+            {
+                Toast("Core transfer: " + ex.Message);
+            }
+            finally
+            {
+                SendToCoreButton.IsEnabled = true;
+            }
+        }
+
+        async void SendToSooloosButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_mode != "core" || _album == null)
+                return;
+
+            var host = ReadSetting(SooloosHostSetting);
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                UpdateSettings();
+                ShowContent(SettingsPanel);
+                TransferSooloosHostBox.Focus(FocusState.Programmatic);
+                Toast("Connect the Sooloos Core first");
+                return;
+            }
+
+            SendToSooloosButton.IsEnabled = false;
+            try
+            {
+                Toast("Sending album to Sooloos…");
+                var importer = new SooloosImportService(host);
+                var result = await importer.ImportAlbumAsync(_album);
+                var count = JsonNumber(result, "track_count", 0);
+                var verified = JsonBool(result, "verified");
+                Toast("Sooloos import complete · " +
+                    count.ToString("0") + " tracks" +
+                    (verified ? " · verified" : ""));
+            }
+            catch (Exception ex)
+            {
+                Toast("Sooloos transfer: " + ex.Message);
+            }
+            finally
+            {
+                SendToSooloosButton.IsEnabled = true;
+            }
         }
 
         async void TracksList_ItemClick(object sender, ItemClickEventArgs e)
@@ -599,6 +681,51 @@ namespace BrimstoneXbox
         {
             ShowContent(MusicPanel);
             MusicNavButton.Focus(FocusState.Programmatic);
+        }
+
+        async void TransferCoreConnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            TransferCoreStatusText.Text = "Connecting…";
+            try
+            {
+                await _core.LoginAsync(
+                    TransferCoreUrlBox.Text,
+                    TransferCoreUsernameBox.Text,
+                    TransferCorePasswordBox.Password);
+                TransferCorePasswordBox.Password = "";
+                TransferCoreUrlBox.Text = _core.BaseUrl ?? TransferCoreUrlBox.Text;
+                TransferCoreStatusText.Text = "Ready · verified imports enabled";
+                Toast("Destination Core connected");
+            }
+            catch (Exception ex)
+            {
+                TransferCoreStatusText.Text = ex.Message;
+            }
+        }
+
+        async void TransferSooloosConnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            TransferSooloosStatusText.Text = "Connecting…";
+            try
+            {
+                var host = SooloosClient.NormaliseHost(
+                    TransferSooloosHostBox.Text);
+                if (string.IsNullOrWhiteSpace(host))
+                    throw new InvalidOperationException(
+                        "Enter the Sooloos Core address.");
+
+                var client = new SooloosClient(host);
+                await client.TestConnectionAsync();
+                WriteSetting(SooloosHostSetting, host);
+                TransferSooloosHostBox.Text = host;
+                SooloosHostBox.Text = host;
+                TransferSooloosStatusText.Text = "Ready · direct import enabled";
+                Toast("Sooloos destination connected");
+            }
+            catch (Exception ex)
+            {
+                TransferSooloosStatusText.Text = ex.Message;
+            }
         }
 
         void SettingsNavButton_Click(object sender, RoutedEventArgs e)
@@ -956,6 +1083,15 @@ namespace BrimstoneXbox
         void UpdateSettings()
         {
             SettingsEditionText.Text = _mode == "sooloos" ? "Sooloos" : "Core";
+            TransferCoreUrlBox.Text = _core.BaseUrl ?? TransferCoreUrlBox.Text ?? "";
+            TransferCoreStatusText.Text = _core.HasSavedLogin
+                ? "Ready · " + (_core.BaseUrl ?? "")
+                : "Not connected";
+            TransferSooloosHostBox.Text = ReadSetting(SooloosHostSetting);
+            TransferSooloosStatusText.Text =
+                string.IsNullOrWhiteSpace(ReadSetting(SooloosHostSetting))
+                    ? "Not connected"
+                    : "Ready · " + ReadSetting(SooloosHostSetting);
             SettingsCoreText.Text = _mode == "sooloos"
                 ? (string.IsNullOrWhiteSpace(ReadSetting(SooloosHostSetting)) ? "Sooloos not configured" : ReadSetting(SooloosHostSetting))
                 : (_nativeCore.Running
