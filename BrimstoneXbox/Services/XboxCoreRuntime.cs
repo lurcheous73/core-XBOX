@@ -167,6 +167,7 @@ namespace BrimstoneXbox.Services
         public void Dispose()
         {
             Running = false;
+            _stack.Dispose();
             _api?.Dispose();
             _api = null;
         }
