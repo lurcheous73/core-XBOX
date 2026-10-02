@@ -332,6 +332,7 @@ namespace BrimstoneXbox
 
             AlbumTitleText.Text = _album.Title;
             AlbumArtistText.Text = _album.Artist;
+            AlbumArtworkImage.Source = _album.Artwork;
 
             if (_mode == "core")
             {
