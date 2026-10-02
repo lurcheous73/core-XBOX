@@ -214,6 +214,26 @@ namespace BrimstoneXbox.Services
             if (request.Method == "POST" &&
                 request.Path.StartsWith("/api/v1/playback/",
                     StringComparison.OrdinalIgnoreCase) &&
+                request.Path.EndsWith("/stop",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _runtime.Control("stop");
+                return Ok(Success());
+            }
+
+            if (request.Method == "POST" &&
+                request.Path.StartsWith("/api/v1/endpoints/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                request.Path.EndsWith("/stop",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _runtime.Control("stop");
+                return Ok(Success());
+            }
+
+            if (request.Method == "POST" &&
+                request.Path.StartsWith("/api/v1/playback/",
+                    StringComparison.OrdinalIgnoreCase) &&
                 request.Path.IndexOf("/control/",
                     StringComparison.OrdinalIgnoreCase) >= 0)
             {
