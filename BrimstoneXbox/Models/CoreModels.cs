@@ -75,6 +75,14 @@ namespace BrimstoneXbox.Models
         }
     }
 
+    public sealed class IngestSummary
+    {
+        public bool AutoRip { get; set; }
+        public int OpticalDrives { get; set; }
+        public int ActiveJobs { get; set; }
+        public string CurrentJob { get; set; }
+    }
+
     public sealed class SooloosZone
     {
         public string Id { get; set; }
