@@ -59,6 +59,7 @@
     <Compile Include="MainPage.xaml.cs"><DependentUpon>MainPage.xaml</DependentUpon></Compile>
     <Compile Include="Models\CoreModels.cs" />
     <Compile Include="Services\CoreClient.cs" />
+    <Compile Include="Services\StorageFileHttpContent.cs" />
     <Compile Include="Services\XboxCoreRuntime.cs" />
     <Compile Include="Services\CoreStackSupervisor.cs" />
     <Compile Include="Services\NativeCatalogueService.cs" />
