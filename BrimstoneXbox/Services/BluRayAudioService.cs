@@ -1,4 +1,6 @@
+using DiscUtils.Udf;
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -36,14 +38,28 @@ namespace BrimstoneXbox.Services
                 }
             }
 
+            // Xbox commonly exposes optical UDF through the raw CD-ROM device
+            // without mounting it into KnownFolders.RemovableDevices. Fall
+            // through to the same SCSI/UDF path used by the optical probe.
+            var raw = await ScanRawUdfAsync();
+            if (GetBool(raw, "available"))
+            {
+                _lastScan = raw;
+                await PersistAsync("bluray-scan.json", raw);
+                return raw;
+            }
+
             _lastScan = new JsonObject
             {
-                ["state"] = JsonValue.CreateStringValue("no_bluray"),
+                ["state"] = JsonValue.CreateStringValue(
+                    GetString(raw, "state", "no_bluray")),
                 ["available"] = JsonValue.CreateBooleanValue(false),
                 ["disc_type"] = JsonValue.CreateStringValue(""),
                 ["title_count"] = JsonValue.CreateNumberValue(0),
                 ["titles"] = new JsonArray()
             };
+            if (raw.ContainsKey("error"))
+                _lastScan["error"] = raw["error"];
             await PersistAsync("bluray-scan.json", _lastScan);
             return _lastScan;
         }
@@ -369,6 +385,189 @@ namespace BrimstoneXbox.Services
                 .Trim()
                 .TrimEnd('.');
             return string.IsNullOrWhiteSpace(cleaned) ? "disc" : cleaned;
+        }
+
+        async Task<JsonObject> ScanRawUdfAsync()
+        {
+            try
+            {
+                var optical = await ScsiOpticalStream.OpenAsync();
+
+                return await Task.Run(() =>
+                {
+                    using (optical)
+                    {
+                        optical.Position = 0;
+                        if (!UdfReader.Detect(optical))
+                            return State("no_udf");
+
+                        optical.Position = 0;
+                        using (var udf = new UdfReader(
+                            optical,
+                            optical.SectorSize))
+                        {
+                            if (!udf.DirectoryExists(@"BDMV") ||
+                                !udf.DirectoryExists(@"BDMV\PLAYLIST") ||
+                                !udf.DirectoryExists(@"BDMV\STREAM"))
+                                return State("not_bluray");
+
+                            var protection =
+                                udf.DirectoryExists(@"AACS");
+                            var streamPaths = udf.GetFiles(
+                                @"BDMV\STREAM",
+                                "*.m2ts",
+                                SearchOption.TopDirectoryOnly);
+                            var streamNames = new HashSet<string>(
+                                streamPaths.Select(
+                                    System.IO.Path.GetFileName),
+                                StringComparer.OrdinalIgnoreCase);
+
+                            var streamsReadable =
+                                streamPaths != null &&
+                                streamPaths.Length > 0;
+                            var streamsDecrypted = false;
+
+                            // If AACS is present on the raw optical filesystem,
+                            // do not mistake MPEG-TS framing for decrypted media.
+                            // A mounted/decrypted source can still use the normal
+                            // StorageFolder path above.
+                            if (!protection && streamsReadable)
+                            {
+                                using (var sample = udf.OpenFile(
+                                    streamPaths[0],
+                                    FileMode.Open,
+                                    FileAccess.Read))
+                                {
+                                    streamsDecrypted =
+                                        LooksLikeReadableM2ts(sample);
+                                }
+                            }
+
+                            var playlistPaths = udf.GetFiles(
+                                @"BDMV\PLAYLIST",
+                                "*.mpls",
+                                SearchOption.TopDirectoryOnly);
+                            var parsed = new List<PlaylistInfo>();
+                            var parseErrors = new JsonArray();
+
+                            foreach (var path in playlistPaths
+                                .OrderBy(
+                                    value => value,
+                                    StringComparer.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    byte[] bytes;
+                                    using (var source = udf.OpenFile(
+                                        path,
+                                        FileMode.Open,
+                                        FileAccess.Read))
+                                    {
+                                        bytes = ReadAllBytes(source);
+                                    }
+
+                                    var info = ParsePlaylist(
+                                        System.IO.Path.GetFileName(path),
+                                        bytes,
+                                        streamNames);
+                                    if (info.Clips.Count > 0 &&
+                                        info.DurationTicks > 0)
+                                        parsed.Add(info);
+                                }
+                                catch (Exception ex)
+                                {
+                                    parseErrors.Add(new JsonObject
+                                    {
+                                        ["playlist"] =
+                                            JsonValue.CreateStringValue(
+                                                System.IO.Path.GetFileName(
+                                                    path) ?? ""),
+                                        ["error"] =
+                                            JsonValue.CreateStringValue(
+                                                Describe(ex))
+                                    });
+                                }
+                            }
+
+                            var ordered = parsed
+                                .OrderByDescending(
+                                    value => value.DurationTicks)
+                                .ThenBy(
+                                    value => value.FileName,
+                                    StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+
+                            var seen = new HashSet<string>(
+                                StringComparer.Ordinal);
+                            var unique = new List<PlaylistInfo>();
+                            var duplicateCount = 0;
+                            foreach (var item in ordered)
+                            {
+                                if (!seen.Add(item.Signature()))
+                                {
+                                    duplicateCount++;
+                                    continue;
+                                }
+                                unique.Add(item);
+                            }
+
+                            var titles = new JsonArray();
+                            for (var index = 0;
+                                 index < unique.Count;
+                                 index++)
+                                titles.Add(ToJson(
+                                    unique[index],
+                                    index == 0));
+
+                            var label = udf.VolumeLabel ?? "";
+                            return new JsonObject
+                            {
+                                ["state"] =
+                                    JsonValue.CreateStringValue("ready"),
+                                ["available"] =
+                                    JsonValue.CreateBooleanValue(true),
+                                ["disc_type"] =
+                                    JsonValue.CreateStringValue("bluray"),
+                                ["source"] =
+                                    JsonValue.CreateStringValue("raw-scsi-udf"),
+                                ["disc_label"] =
+                                    JsonValue.CreateStringValue(label),
+                                ["protection_detected"] =
+                                    JsonValue.CreateBooleanValue(protection),
+                                ["streams_readable"] =
+                                    JsonValue.CreateBooleanValue(
+                                        streamsReadable),
+                                ["streams_decrypted"] =
+                                    JsonValue.CreateBooleanValue(
+                                        streamsDecrypted),
+                                ["disc_key"] =
+                                    JsonValue.CreateStringValue(
+                                        BuildDiscKey(label, unique)),
+                                ["title_count"] =
+                                    JsonValue.CreateNumberValue(unique.Count),
+                                ["duplicate_playlists_filtered"] =
+                                    JsonValue.CreateNumberValue(
+                                        duplicateCount),
+                                ["titles"] = titles,
+                                ["parse_errors"] = parseErrors
+                            };
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return new JsonObject
+                {
+                    ["state"] =
+                        JsonValue.CreateStringValue(
+                            "raw_udf_scan_failed"),
+                    ["available"] =
+                        JsonValue.CreateBooleanValue(false),
+                    ["error"] =
+                        JsonValue.CreateStringValue(Describe(ex))
+                };
+            }
         }
 
         async Task<JsonObject> ScanVolumeAsync(StorageFolder volume)
@@ -778,6 +977,59 @@ namespace BrimstoneXbox.Services
                 (titles == null ? 0 : titles.Count) + "|" +
                 (first == null ? "" : first.PlaylistId) + "|" +
                 (first == null ? 0UL : first.DurationTicks);
+        }
+
+        static byte[] ReadAllBytes(Stream source)
+        {
+            if (source == null)
+                return new byte[0];
+
+            using (var memory = new MemoryStream())
+            {
+                var buffer = new byte[64 * 1024];
+                while (true)
+                {
+                    var read = source.Read(
+                        buffer,
+                        0,
+                        buffer.Length);
+                    if (read <= 0)
+                        break;
+                    memory.Write(buffer, 0, read);
+                }
+                return memory.ToArray();
+            }
+        }
+
+        static bool LooksLikeReadableM2ts(Stream stream)
+        {
+            if (stream == null || !stream.CanRead)
+                return false;
+
+            var start = stream.CanSeek
+                ? stream.Position
+                : 0;
+            try
+            {
+                var bytes = new byte[5];
+                var offset = 0;
+                while (offset < bytes.Length)
+                {
+                    var read = stream.Read(
+                        bytes,
+                        offset,
+                        bytes.Length - offset);
+                    if (read <= 0)
+                        return false;
+                    offset += read;
+                }
+                return bytes[4] == 0x47;
+            }
+            finally
+            {
+                if (stream.CanSeek)
+                    stream.Position = start;
+            }
         }
 
         static async Task<byte[]> ReadBytesAsync(StorageFile file)
