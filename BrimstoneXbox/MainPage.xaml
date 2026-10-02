@@ -44,7 +44,7 @@
                  primary shell content retains ~3% horizontal safe-area inset. -->
 
             <!-- First run: appliance personality only. -->
-            <Grid x:Name="FirstRunPanel" Background="#09090C">
+            <Grid x:Name="FirstRunPanel" Visibility="Collapsed" Background="#09090C">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="1320">
                     <TextBlock Text="BRIMSTONE CORE" FontSize="26" FontWeight="Bold" Foreground="{StaticResource BrimstoneAccent}"
                                HorizontalAlignment="Center"/>
@@ -84,7 +84,7 @@
                             </Border>
                         </Button>
 
-                        <Button x:Name="SooloosEditionButton" Grid.Column="2" Click="SooloosEditionButton_Click"
+                        <Button x:Name="SooloosEditionButton" Grid.Column="2" Visibility="Collapsed" Click="SooloosEditionButton_Click"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0"
                                 Background="Transparent" BorderThickness="0">
                             <Border Height="310" Background="#181820" BorderBrush="#57416E" BorderThickness="2"
@@ -417,7 +417,7 @@
                                     <Button x:Name="SendToCoreButton" Content="⇧  Send to Core"
                                             HorizontalAlignment="Left" MinWidth="180"
                                             Click="SendToCoreButton_Click"/>
-                                    <Button x:Name="SendToSooloosButton" Content="⇧  Send to Sooloos"
+                                    <Button x:Name="SendToSooloosButton" Visibility="Collapsed" Content="⇧  Send to Sooloos"
                                             HorizontalAlignment="Left" MinWidth="210"
                                             Click="SendToSooloosButton_Click"/>
                                 </StackPanel>
@@ -579,9 +579,9 @@
 
                             <Border Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="24">
                                 <StackPanel>
-                                    <TextBlock Text="Edition" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock x:Name="SettingsEditionText" Text="Core" FontSize="28" FontWeight="SemiBold" Margin="0,4,0,8"/>
-                                    <TextBlock Text="Chosen on first setup. Xbox starts straight into this mode from now on."
+                                    <TextBlock Text="Mode" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
+                                    <TextBlock x:Name="SettingsEditionText" Text="Standalone Core" FontSize="28" FontWeight="SemiBold" Margin="0,4,0,8"/>
+                                    <TextBlock Text="This Xbox is the Core: library, playback, ripping and API all run locally."
                                                FontSize="15" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
@@ -605,8 +605,9 @@
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel>
-                                        <TextBlock Text="Other Brimstone Core" FontSize="17" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Sign in once, then albums can be sent with checksum verification."
+                                        <TextBlock Text="Send to another Brimstone Core" FontSize="17" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Optional destination only. This Xbox remains a standalone Core."
+
                                                    FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,8"/>
                                         <TextBox x:Name="TransferCoreUrlBox" PlaceholderText="http://core-audio.local:8080"/>
                                         <Grid>
@@ -625,7 +626,7 @@
                                         </StackPanel>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Column="2">
+                                    <StackPanel Grid.Column="2" Visibility="Collapsed">
                                         <TextBlock Text="Meridian / Sooloos" FontSize="17" FontWeight="SemiBold"/>
                                         <TextBlock Text="Save a Core address once; local Xbox albums can then import directly."
                                                    FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,8"/>
