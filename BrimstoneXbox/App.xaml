@@ -12,9 +12,11 @@
         <SolidColorBrush x:Key="BrimstoneMuted" Color="#AAA5B5"/>
 
         <Style TargetType="Button">
-            <Setter Property="MinHeight" Value="54"/>
-            <Setter Property="Padding" Value="18,10"/>
+            <Setter Property="MinHeight" Value="58"/>
+            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="Padding" Value="20,11"/>
             <Setter Property="Margin" Value="4"/>
+            <Setter Property="FontSize" Value="18"/>
             <Setter Property="Foreground" Value="{StaticResource BrimstoneText}"/>
             <Setter Property="Background" Value="{StaticResource BrimstonePanelRaised}"/>
             <Setter Property="BorderBrush" Value="#464052"/>
@@ -32,6 +34,18 @@
             <Setter Property="MinHeight" Value="52"/>
             <Setter Property="Margin" Value="0,7"/>
             <Setter Property="FontSize" Value="22"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="MinHeight" Value="58"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="UseSystemFocusVisuals" Value="True"/>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="MinHeight" Value="50"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="UseSystemFocusVisuals" Value="True"/>
         </Style>
     </Application.Resources>
 </Application>
