@@ -649,6 +649,12 @@ namespace BrimstoneXbox
             FooterMetaText.Text = string.Join(" · ", new[] { artist, album, state }.Where(v => !string.IsNullOrWhiteSpace(v)));
             PlayPauseButton.Content = playing ? "Ⅱ  Pause" : "▶  Play";
             FooterPlayPauseButton.Content = playing ? "Ⅱ" : "▶";
+
+            if (_mode == "core")
+            {
+                OutputText.Text = PlaybackService.Instance.AudioOutputName;
+                FooterOutputText.Text = PlaybackService.Instance.AudioOutputName;
+            }
         }
 
         void UpdateSettings()
@@ -709,8 +715,8 @@ namespace BrimstoneXbox
                 ConnectionText.Text = _nativeCore.Ready
                     ? "Xbox Core ready"
                     : "Xbox Core starting";
-                OutputText.Text = "Xbox";
-                FooterOutputText.Text = "Xbox";
+                OutputText.Text = PlaybackService.Instance.AudioOutputName;
+                FooterOutputText.Text = PlaybackService.Instance.AudioOutputName;
             }
             MusicNavButton.Focus(FocusState.Programmatic);
         }
