@@ -8,7 +8,9 @@ namespace BrimstoneXbox.Models
         public string Title { get; set; }
         public string Artist { get; set; }
         public List<CoreTrack> Tracks { get; } = new List<CoreTrack>();
-        public string Meta => Tracks.Count + (Tracks.Count == 1 ? " track" : " tracks");
+        public string Meta => Tracks.Count > 0
+            ? Tracks.Count + (Tracks.Count == 1 ? " track" : " tracks")
+            : "Album";
     }
 
     public sealed class CoreTrack
@@ -40,5 +42,47 @@ namespace BrimstoneXbox.Models
         public double DurationSeconds { get; set; }
         public double Volume { get; set; }
         public bool Muted { get; set; }
+    }
+
+    public sealed class QueueItem
+    {
+        public string Title { get; set; }
+        public string Artist { get; set; }
+        public string Album { get; set; }
+        public double DurationSeconds { get; set; }
+        public string Number { get; set; }
+
+        public string Meta
+        {
+            get
+            {
+                var parts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(Artist)) parts.Add(Artist);
+                if (!string.IsNullOrWhiteSpace(Album)) parts.Add(Album);
+                return string.Join(" · ", parts);
+            }
+        }
+
+        public string DurationText
+        {
+            get
+            {
+                var seconds = (int)System.Math.Max(0, DurationSeconds);
+                return seconds > 0
+                    ? (seconds / 60).ToString() + ":" + (seconds % 60).ToString("00")
+                    : "";
+            }
+        }
+    }
+
+    public sealed class SooloosZone
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string State { get; set; }
+        public double Volume { get; set; }
+        public bool Muted { get; set; }
+        public string Title { get; set; }
+        public string Subtitle { get; set; }
     }
 }
