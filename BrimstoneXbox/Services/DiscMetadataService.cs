@@ -22,7 +22,7 @@ namespace BrimstoneXbox.Services
         {
             _http.DefaultRequestHeaders.TryAddWithoutValidation(
                 "User-Agent",
-                "BrimstoneCoreXbox/0.2.5 (core-audio.uk)");
+                "BrimstoneCoreXbox/0.2.6 (core-audio.uk)");
         }
 
         public async Task<JsonObject> EnrichFromRipStatusAsync(
