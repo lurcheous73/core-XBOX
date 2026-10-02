@@ -286,10 +286,13 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.20"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.21"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
+                    ["background_playback"] = JsonValue.CreateBooleanValue(true),
+                    ["game_background_audio"] = JsonValue.CreateBooleanValue(true),
+                    ["system_media_transport_controls"] = JsonValue.CreateBooleanValue(true),
                     ["optical_rip"] = JsonValue.CreateBooleanValue(true),
                     ["queue"] = JsonValue.CreateBooleanValue(true),
                     ["programme"] = JsonValue.CreateBooleanValue(true),
@@ -449,7 +452,7 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.20-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.21-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["hostname"] = JsonValue.CreateStringValue(LocalCoreApiServer.PreferredHostName),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "standalone"),
@@ -477,7 +480,7 @@ namespace BrimstoneXbox.Services
             modules.Add(Module("queue", true,
                 "Playback queue engine available"));
             modules.Add(Module("renderer", true,
-                "MediaPlayer background renderer"));
+                "MediaPlayer · backgroundMediaPlayback · SMTC · game coexistence"));
 
             var optical = _optical.LastResult;
             var opticalStatus = optical.ContainsKey("status") &&
