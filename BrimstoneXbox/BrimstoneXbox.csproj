@@ -58,6 +58,8 @@
     <Compile Include="MainPage.xaml.cs"><DependentUpon>MainPage.xaml</DependentUpon></Compile>
     <Compile Include="Models\CoreModels.cs" />
     <Compile Include="Services\CoreClient.cs" />
+    <Compile Include="Services\XboxCoreRuntime.cs" />
+    <Compile Include="Services\LocalCoreApiServer.cs" />
     <Compile Include="Services\EndpointServer.cs" />
     <Compile Include="Services\PlaybackService.cs" />
     <Compile Include="Services\SooloosClient.cs" />
