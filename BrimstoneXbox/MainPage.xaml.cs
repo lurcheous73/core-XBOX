@@ -727,6 +727,51 @@ namespace BrimstoneXbox
                     return;
                 }
 
+                var bluRay = await _nativeCore.ScanBluRayAsync();
+                if (JsonBool(bluRay, "available") &&
+                    JsonNumber(bluRay, "title_count", 0) > 0)
+                {
+                    var options = new List<BluRayTitleOption>();
+                    if (bluRay.ContainsKey("titles") &&
+                        bluRay["titles"].ValueType == Windows.Data.Json.JsonValueType.Array)
+                    {
+                        foreach (var value in bluRay.GetNamedArray("titles"))
+                        {
+                            if (value.ValueType != Windows.Data.Json.JsonValueType.Object)
+                                continue;
+
+                            var title = value.GetObject();
+                            var seconds = JsonNumber(title, "duration_seconds", 0);
+                            var recommended = JsonBool(title, "recommended");
+                            var playlist = JsonString(title, "playlist", "");
+                            var playlistId = JsonString(title, "playlist_id", playlist);
+
+                            options.Add(new BluRayTitleOption
+                            {
+                                Playlist = playlist,
+                                Label = (recommended ? "Main title · " : "") +
+                                    playlistId + " · " + FormatDuration(seconds)
+                            });
+                        }
+                    }
+
+                    BluRayTitleCombo.ItemsSource = options;
+                    if (options.Count > 0)
+                        BluRayTitleCombo.SelectedIndex = 0;
+
+                    BluRayOptionsPanel.Visibility = Visibility.Visible;
+                    RipModeText.Text = "BLU-RAY AUDIO";
+                    RipStatusText.Text = JsonString(bluRay, "disc_label", "Blu-ray") +
+                        " · " + options.Count +
+                        (options.Count == 1 ? " title" : " titles");
+                    RipDetailText.Text = JsonBool(bluRay, "protection_detected")
+                        ? "Playlist structure found. Lossless audio will use the MakeMKV helper path where the Xbox sandbox cannot read protected streams."
+                        : "Choose a title. Audio is preserved bit-for-bit into MKV; video stays off unless you tick Keep video.";
+                    return;
+                }
+
+                BluRayOptionsPanel.Visibility = Visibility.Collapsed;
+
                 var probe = await _nativeCore.ProbeOpticalAsync();
                 var probeState = JsonString(probe, "status", "unknown");
                 var devices = JsonNumber(probe, "device_count", 0);
@@ -735,13 +780,49 @@ namespace BrimstoneXbox
                     ? "Waiting for a music disc"
                     : "Optical drive unavailable";
                 RipDetailText.Text = devices > 0
-                    ? "Xbox optical ingest is armed. Insert a CD and Brimstone will rip it into this Xbox Core."
+                    ? "Xbox optical ingest is armed. Insert CD, DVD-A or Blu-ray Audio."
                     : "Optical probe: " + probeState;
             }
             catch (Exception ex)
             {
                 RipStatusText.Text = "Rip status unavailable";
                 RipDetailText.Text = ex.Message;
+            }
+        }
+
+        async void PrepareBluRayButton_Click(object sender, RoutedEventArgs e)
+        {
+            var option = BluRayTitleCombo.SelectedItem as BluRayTitleOption;
+            if (option == null)
+            {
+                Toast("Choose a Blu-ray title first");
+                return;
+            }
+
+            PrepareBluRayButton.IsEnabled = false;
+            try
+            {
+                var plan = await _nativeCore.CreateBluRayRipPlanAsync(
+                    option.Playlist,
+                    KeepBluRayVideoCheckBox.IsChecked == true);
+
+                var backend = JsonString(plan, "backend", "");
+                var state = JsonString(plan, "backend_state", "");
+                RipStatusText.Text = "MKV rip prepared";
+                RipDetailText.Text = state == "helper_required"
+                    ? "This disc needs the MakeMKV helper. The Xbox has saved the exact playlist and lossless remux request for Core to run."
+                    : "The Xbox has saved the playlist and lossless MKV remux plan. Native remux is the next engine stage.";
+                Toast(backend == "makemkv-helper"
+                    ? "MakeMKV helper plan ready"
+                    : "Xbox MKV plan ready");
+            }
+            catch (Exception ex)
+            {
+                Toast(ex.Message);
+            }
+            finally
+            {
+                PrepareBluRayButton.IsEnabled = true;
             }
         }
 
@@ -920,6 +1001,23 @@ namespace BrimstoneXbox
         {
             object value;
             return _settings.Values.TryGetValue(key, out value) ? value as string ?? "" : "";
+        }
+
+        static string FormatDuration(double seconds)
+        {
+            var span = TimeSpan.FromSeconds(Math.Max(0, seconds));
+            return span.TotalHours >= 1
+                ? ((int)span.TotalHours).ToString("0") + ":" +
+                  span.Minutes.ToString("00") + ":" +
+                  span.Seconds.ToString("00")
+                : span.Minutes.ToString("0") + ":" +
+                  span.Seconds.ToString("00");
+        }
+
+        sealed class BluRayTitleOption
+        {
+            public string Playlist { get; set; }
+            public string Label { get; set; }
         }
 
         static string JsonString(Windows.Data.Json.JsonObject obj, string key, string fallback = "")
