@@ -197,6 +197,22 @@ namespace BrimstoneXbox.Services
                 return Ok(await _runtime.BuildCatalogApiAsync());
 
             if (request.Method == "GET" &&
+                request.Path == "/api/v1/audio/output")
+                return Ok(_runtime.BuildAudioOutput());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/audio/outputs")
+                return Ok(await _runtime.BuildAudioOutputsAsync());
+
+            if (request.Method == "POST" &&
+                request.Path == "/api/v1/audio/output")
+            {
+                var body = ParseBody(request);
+                var id = JsonString(body, "id", "auto");
+                return Ok(await _runtime.SetAudioOutputAsync(id));
+            }
+
+            if (request.Method == "GET" &&
                 request.Path == "/api/v1/endpoints")
                 return Ok(_runtime.BuildEndpoints());
 
