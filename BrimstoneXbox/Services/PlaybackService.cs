@@ -89,7 +89,7 @@ namespace BrimstoneXbox.Services
                         ? "HDMI + Optical / S/PDIF"
                         : hasHdmi
                             ? "HDMI"
-                            : "Xbox system audio";
+                            : "HDMI / Optical · Auto";
 
                     Changed();
                     return;
@@ -114,12 +114,12 @@ namespace BrimstoneXbox.Services
                 // silently routing to some unrelated endpoint.
                 _settings.Values["xboxAudioOutputId"] = "auto";
                 _audioOutputId = "auto";
-                _audioOutputName = "Xbox system audio";
+                _audioOutputName = "HDMI / Optical · Auto";
             }
             catch
             {
                 _audioOutputId = "auto";
-                _audioOutputName = "Xbox system audio";
+                _audioOutputName = "HDMI / Optical · Auto";
             }
 
             Changed();
