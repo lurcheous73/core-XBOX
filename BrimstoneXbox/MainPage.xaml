@@ -222,7 +222,7 @@
                                             <GradientStop Color="#0D0D12" Offset="1"/>
                                         </LinearGradientBrush>
                                     </Border.Background>
-                                    <Grid Clip="True">
+                                    <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="390"/>
