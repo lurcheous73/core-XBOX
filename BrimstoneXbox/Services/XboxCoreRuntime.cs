@@ -35,6 +35,12 @@ namespace BrimstoneXbox.Services
         public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
         public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
         public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
+        public bool ToggleFavourite(CoreAlbum album)
+        {
+            if (album == null) return false;
+            album.IsFavourite = _catalogue.ToggleFavourite(album.Id);
+            return album.IsFavourite;
+        }
         public List<QueueItem> GetQueue() => PlaybackService.Instance.QueueSnapshot();
 
         public void Control(string action)
