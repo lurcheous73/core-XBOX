@@ -4,6 +4,7 @@ using Windows.Data.Json;
 using Windows.Devices.Custom;
 using Windows.Devices.Enumeration;
 using Windows.Foundation.Metadata;
+using Windows.Storage;
 using Windows.Storage.Streams;
 using WinBuffer = Windows.Storage.Streams.Buffer;
 
@@ -103,7 +104,26 @@ namespace BrimstoneXbox.Services
             }
 
             _last = result;
+            await PersistAsync(result);
             return result;
+        }
+
+        async Task PersistAsync(JsonObject result)
+        {
+            try
+            {
+                var root = ApplicationData.Current.LocalFolder;
+                var core = await root.CreateFolderAsync("Core", CreationCollisionOption.OpenIfExists);
+                var ingest = await core.CreateFolderAsync("Ingest", CreationCollisionOption.OpenIfExists);
+                var file = await ingest.CreateFileAsync(
+                    "optical-probe.json",
+                    CreationCollisionOption.ReplaceExisting);
+                await FileIO.WriteTextAsync(file, result.Stringify());
+            }
+            catch
+            {
+                // Diagnostic persistence must never make optical probing fail.
+            }
         }
 
         async Task<JsonObject> ReadTocAsync(CustomDevice device)
