@@ -217,6 +217,18 @@ namespace BrimstoneXbox.Services
 
         public void SaveState() { }
 
+        static async Task<StorageFile> ResolveLocalFileAsync(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+                throw new ArgumentException("Local media path is required.");
+
+            var absolute = Path.Combine(
+                ApplicationData.Current.LocalFolder.Path,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            return await StorageFile.GetFileFromPathAsync(absolute);
+        }
+
         void ApplyMetadata(MediaPlaybackItem item, JsonObject source)
         {
             var title = JsonString(source, "title",
