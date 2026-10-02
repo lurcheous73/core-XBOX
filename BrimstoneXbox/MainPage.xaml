@@ -542,6 +542,13 @@
                                                 HorizontalAlignment="Left" Margin="0,12,0,0"
                                                 Click="PrepareBluRayButton_Click"/>
                                     </StackPanel>
+                                    <Button x:Name="SendBluRayToCoreButton"
+                                            Content="⇧  Finish on another Core"
+                                            HorizontalAlignment="Left"
+                                            Margin="0,18,0,0"
+                                            MinWidth="260"
+                                            Click="SendBluRayToCoreButton_Click"
+                                            Visibility="Collapsed"/>
                                     <Button x:Name="RipNowButton" Content="Rip now" HorizontalAlignment="Left" Margin="0,24,0,0"
                                             Click="RipNowButton_Click" Visibility="Collapsed"/>
                                 </StackPanel>
