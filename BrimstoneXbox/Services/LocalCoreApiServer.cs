@@ -99,6 +99,10 @@ namespace BrimstoneXbox.Services
                 request.Path == "/api/v1/optical/probe")
                 return Ok(_runtime.BuildOptical());
 
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/auth/state")
+                return Ok(_runtime.BuildAuthState());
+
             if (request.Method == "POST" &&
                 request.Path == "/api/v1/auth/login")
             {
@@ -111,12 +115,20 @@ namespace BrimstoneXbox.Services
             RequireAuthorization(request);
 
             if (request.Method == "GET" &&
+                request.Path == "/api/v1/auth/me")
+                return Ok(_runtime.BuildAuthMe());
+
+            if (request.Method == "GET" &&
                 request.Path == "/api/v1/catalog/albums")
                 return Ok(await _runtime.BuildCatalogApiAsync());
 
             if (request.Method == "GET" &&
                 request.Path == "/api/v1/endpoints")
                 return Ok(_runtime.BuildEndpoints());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/zones")
+                return Ok(_runtime.BuildZones());
 
             if (request.Method == "GET" &&
                 IsEndpointStatusPath(request.Path))
@@ -252,6 +264,49 @@ namespace BrimstoneXbox.Services
                        StringComparison.OrdinalIgnoreCase) &&
                    path.EndsWith("/programme",
                        StringComparison.OrdinalIgnoreCase);
+        }
+
+        static string QueryValue(string query, string key)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return "";
+
+            foreach (var pair in query.Split('&'))
+            {
+                var equals = pair.IndexOf('=');
+                var name = equals >= 0 ? pair.Substring(0, equals) : pair;
+                var value = equals >= 0 ? pair.Substring(equals + 1) : "";
+                if (string.Equals(
+                    Uri.UnescapeDataString(name.Replace("+", " ")),
+                    key,
+                    StringComparison.OrdinalIgnoreCase))
+                    return Uri.UnescapeDataString(value.Replace("+", " "));
+            }
+
+            return "";
+        }
+
+        static double QueryNumber(string query, string key, double fallback)
+        {
+            double value;
+            return double.TryParse(
+                QueryValue(query, key),
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out value)
+                ? value
+                : fallback;
+        }
+
+        static bool QueryBool(string query, string key, bool fallback)
+        {
+            var value = QueryValue(query, key);
+            bool parsed;
+            if (bool.TryParse(value, out parsed))
+                return parsed;
+            if (value == "1") return true;
+            if (value == "0") return false;
+            return fallback;
         }
 
         static JsonObject ParseBody(Request request)
