@@ -9,7 +9,7 @@
   <Identity
     Name="BrimstoneCottage.BrimstoneXbox"
     Publisher="CN=Brimstone Cottage"
-    Version="0.2.10.0" />
+    Version="0.2.11.0" />
 
   <mp:PhoneIdentity
     PhoneProductId="9c796055-7074-4fd5-aaf8-b9eec20c8c86"
@@ -48,6 +48,24 @@
           Image="Assets\SplashScreen.png"
           BackgroundColor="#08080B" />
       </uap:VisualElements>
+      <Extensions>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="brimstone.opticalmedia">
+            <uap:SupportedFileTypes>
+              <uap:FileType>.aob</uap:FileType>
+              <uap:FileType>.ifo</uap:FileType>
+              <uap:FileType>.bup</uap:FileType>
+              <uap:FileType>.vob</uap:FileType>
+              <uap:FileType>.m2ts</uap:FileType>
+              <uap:FileType>.mpls</uap:FileType>
+              <uap:FileType>.clpi</uap:FileType>
+              <uap:FileType>.wav</uap:FileType>
+              <uap:FileType>.flac</uap:FileType>
+              <uap:FileType>.mkv</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
 
@@ -56,6 +74,7 @@
     <Capability Name="internetClientServer" />
     <Capability Name="privateNetworkClientServer" />
     <uap3:Capability Name="backgroundMediaPlayback" />
+    <uap:Capability Name="removableStorage" />
     <DeviceCapability Name="optical" />
   </Capabilities>
 </Package>
