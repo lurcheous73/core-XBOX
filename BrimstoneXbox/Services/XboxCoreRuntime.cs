@@ -189,6 +189,45 @@ namespace BrimstoneXbox.Services
         public Task PlayProgrammeIdsAsync(System.Collections.Generic.IList<long> ids) =>
             _catalogue.PlayProgrammeIdsAsync(ids);
 
+        public JsonObject BuildAudioOutput()
+        {
+            var playback = PlaybackService.Instance;
+            return new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue(playback.AudioOutputId ?? ""),
+                ["name"] = JsonValue.CreateStringValue(playback.AudioOutputName ?? "Xbox system output"),
+                ["policy"] = JsonValue.CreateStringValue("hdmi-optical-auto")
+            };
+        }
+
+        public async Task<JsonObject> BuildAudioOutputsAsync()
+        {
+            var rows = new JsonArray();
+            rows.Add(new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue("auto"),
+                ["name"] = JsonValue.CreateStringValue("Automatic · HDMI then Optical"),
+                ["preferred"] = JsonValue.CreateBooleanValue(true),
+                ["active"] = JsonValue.CreateBooleanValue(false)
+            });
+
+            foreach (var row in await PlaybackService.Instance.GetAudioOutputsAsync())
+                rows.Add(row);
+
+            return new JsonObject
+            {
+                ["policy"] = JsonValue.CreateStringValue("hdmi-optical-auto"),
+                ["current"] = BuildAudioOutput(),
+                ["outputs"] = rows
+            };
+        }
+
+        public async Task<JsonObject> SetAudioOutputAsync(string id)
+        {
+            await PlaybackService.Instance.SetAudioOutputAsync(id);
+            return BuildAudioOutput();
+        }
+
         public JsonObject BuildEndpoints()
         {
             var endpoints = new JsonArray();
@@ -211,12 +250,18 @@ namespace BrimstoneXbox.Services
             var transports = new JsonArray();
             transports.Add(JsonValue.CreateStringValue("pcm"));
 
+            var playback = PlaybackService.Instance;
             var devices = new JsonArray();
             devices.Add(new JsonObject
             {
-                ["id"] = JsonValue.CreateStringValue("default"),
-                ["name"] = JsonValue.CreateStringValue("Xbox audio output"),
-                ["default"] = JsonValue.CreateBooleanValue(true)
+                ["id"] = JsonValue.CreateStringValue(
+                    string.IsNullOrWhiteSpace(playback.AudioOutputId)
+                        ? "auto"
+                        : playback.AudioOutputId),
+                ["name"] = JsonValue.CreateStringValue(
+                    playback.AudioOutputName ?? "HDMI / Optical (Xbox default)"),
+                ["default"] = JsonValue.CreateBooleanValue(true),
+                ["policy"] = JsonValue.CreateStringValue("hdmi-optical-auto")
             });
 
             return new JsonObject
@@ -294,6 +339,10 @@ namespace BrimstoneXbox.Services
                 ["duration_seconds"] = JsonValue.CreateNumberValue(p.DurationSeconds),
                 ["volume"] = JsonValue.CreateNumberValue(p.Volume),
                 ["muted"] = JsonValue.CreateBooleanValue(p.Muted),
+                ["output_id"] = JsonValue.CreateStringValue(
+                    PlaybackService.Instance.AudioOutputId ?? ""),
+                ["output_name"] = JsonValue.CreateStringValue(
+                    PlaybackService.Instance.AudioOutputName ?? "Xbox system output"),
                 ["queue"] = queue
             };
         }
