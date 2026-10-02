@@ -7,7 +7,10 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.Data.Json;
+using Windows.Security.Cryptography;
+using Windows.Security.Cryptography.Core;
 using Windows.Storage;
+using Windows.Storage.Streams;
 
 namespace BrimstoneXbox.Services
 {
@@ -286,6 +289,141 @@ namespace BrimstoneXbox.Services
             return result;
         }
 
+        public async Task<JsonObject> ImportAlbumAsync(CoreAlbum album)
+        {
+            RequireUserToken();
+            if (album == null || album.Tracks == null || album.Tracks.Count == 0)
+                throw new InvalidOperationException("This album has no Xbox-local tracks to send.");
+
+            var results = new JsonArray();
+            var imported = 0;
+            var alreadyPresent = 0;
+
+            foreach (var track in album.Tracks)
+            {
+                if (track == null || string.IsNullOrWhiteSpace(track.LocalPath))
+                    continue;
+
+                var absolute = System.IO.Path.Combine(
+                    ApplicationData.Current.LocalFolder.Path,
+                    track.LocalPath);
+                var file = await StorageFile.GetFileFromPathAsync(absolute);
+                var sha = await Sha256Async(file);
+                var props = await file.GetBasicPropertiesAsync();
+
+                var target = BaseUrl.TrimEnd('/') +
+                    "/api/v1/library/import?artist=" +
+                    Uri.EscapeDataString(album.Artist ?? "Unknown Artist") +
+                    "&album=" + Uri.EscapeDataString(album.Title ?? "Unknown Album") +
+                    "&filename=" + Uri.EscapeDataString(file.Name ?? "track.wav") +
+                    "&provenance=" + Uri.EscapeDataString("xbox-core") +
+                    "&edition=" + Uri.EscapeDataString("Xbox rip");
+
+                using (var request = new HttpRequestMessage(HttpMethod.Put, new Uri(target)))
+                using (var source = await file.OpenStreamForReadAsync())
+                using (var content = new StreamContent(source))
+                {
+                    request.Headers.Accept.Add(
+                        new MediaTypeWithQualityHeaderValue("application/json"));
+                    request.Headers.Authorization =
+                        new AuthenticationHeaderValue("Bearer", UserToken);
+                    request.Headers.TryAddWithoutValidation(
+                        "X-Content-SHA256", sha);
+                    content.Headers.ContentType =
+                        new MediaTypeHeaderValue("application/octet-stream");
+                    content.Headers.ContentLength = (long)props.Size;
+                    request.Content = content;
+
+                    var response = await _http.SendAsync(request);
+                    var body = await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var message = "Core import failed (" +
+                            (int)response.StatusCode + ").";
+                        try
+                        {
+                            var error = JsonObject.Parse(body);
+                            message = StringValue(error, "detail",
+                                StringValue(error, "error", message));
+                        }
+                        catch { }
+                        throw new InvalidOperationException(message);
+                    }
+
+                    var parsed = JsonObject.Parse(
+                        string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    var serverSha = StringValue(parsed, "sha256", "");
+                    if (!string.IsNullOrWhiteSpace(serverSha) &&
+                        !string.Equals(serverSha, sha,
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            "Destination Core checksum did not match " + file.Name + ".");
+
+                    var existing = parsed.ContainsKey("already_present") &&
+                                   parsed["already_present"].ValueType == JsonValueType.Boolean &&
+                                   parsed["already_present"].GetBoolean();
+                    if (existing) alreadyPresent++;
+                    else imported++;
+
+                    results.Add(new JsonObject
+                    {
+                        ["file"] = JsonValue.CreateStringValue(file.Name ?? ""),
+                        ["sha256"] = JsonValue.CreateStringValue(
+                            string.IsNullOrWhiteSpace(serverSha) ? sha : serverSha),
+                        ["already_present"] = JsonValue.CreateBooleanValue(existing)
+                    });
+                }
+            }
+
+            return new JsonObject
+            {
+                ["ok"] = JsonValue.CreateBooleanValue(true),
+                ["album"] = JsonValue.CreateStringValue(album.Title ?? ""),
+                ["artist"] = JsonValue.CreateStringValue(album.Artist ?? ""),
+                ["imported"] = JsonValue.CreateNumberValue(imported),
+                ["already_present"] = JsonValue.CreateNumberValue(alreadyPresent),
+                ["files"] = results
+            };
+        }
+
+        static async Task<string> Sha256Async(StorageFile file)
+        {
+            var provider =
+                HashAlgorithmProvider.OpenAlgorithm(HashAlgorithmNames.Sha256);
+            var hash = provider.CreateHash();
+
+            using (var stream = await file.OpenReadAsync())
+            {
+                ulong offset = 0;
+                while (offset < stream.Size)
+                {
+                    var remaining = stream.Size - offset;
+                    var requested = (uint)Math.Min(
+                        1024 * 1024,
+                        (long)Math.Min(remaining, (ulong)uint.MaxValue));
+
+                    using (var input = stream.GetInputStreamAt(offset))
+                    {
+                        var buffer = new Windows.Storage.Streams.Buffer(requested);
+                        var read = await input.ReadAsync(
+                            buffer,
+                            requested,
+                            InputStreamOptions.None);
+
+                        if (read.Length == 0)
+                            break;
+
+                        hash.Append(read);
+                        offset += read.Length;
+                    }
+                }
+            }
+
+            return CryptographicBuffer
+                .EncodeToHexString(hash.GetValueAndReset())
+                .ToLowerInvariant();
+        }
+
         public async Task<IngestSummary> GetIngestSummaryAsync()
         {
             RequireUserToken();
@@ -341,7 +479,7 @@ namespace BrimstoneXbox.Services
         {
             var request = new HttpRequestMessage(method, new Uri(BaseUrl.TrimEnd('/') + path));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Headers.UserAgent.ParseAdd("Brimstone-Xbox/0.1.0");
+            request.Headers.UserAgent.ParseAdd("Brimstone-Xbox/0.2.16");
 
             if (!string.IsNullOrWhiteSpace(bearer))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
