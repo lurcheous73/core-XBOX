@@ -1,8 +1,10 @@
 using BrimstoneXbox.Models;
 using BrimstoneXbox.Services;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.Storage;
 using Windows.System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -12,179 +14,671 @@ namespace BrimstoneXbox
 {
     public sealed partial class MainPage : Page
     {
+        const string EditionSetting = "xboxEdition";
+        const string SooloosHostSetting = "sooloosHost";
+
         readonly CoreClient _core = new CoreClient();
+        readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         readonly DispatcherTimer _heartbeat = new DispatcherTimer();
-        readonly DispatcherTimer _refresh = new DispatcherTimer();
+        readonly DispatcherTimer _uiRefresh = new DispatcherTimer();
+        readonly DispatcherTimer _serviceRefresh = new DispatcherTimer();
+        readonly DispatcherTimer _toastTimer = new DispatcherTimer();
+
         EndpointServer _server;
+        SooloosClient _sooloos;
         CoreAlbum _album;
+        SooloosZone _currentZone;
+        string _mode = "";
+        string _sooloosZoneId = "";
+        bool _serviceRefreshBusy;
 
         public MainPage()
         {
             InitializeComponent();
             Loaded += MainPage_Loaded;
-            PlaybackService.Instance.StateChanged += (s,e) =>
+
+            PlaybackService.Instance.StateChanged += (s, e) =>
                 Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, UpdatePlaybackUi);
+
             _heartbeat.Interval = TimeSpan.FromSeconds(25);
             _heartbeat.Tick += Heartbeat_Tick;
-            _refresh.Interval = TimeSpan.FromSeconds(1);
-            _refresh.Tick += (s,e) => UpdatePlaybackUi();
-            _refresh.Start();
+
+            _uiRefresh.Interval = TimeSpan.FromSeconds(1);
+            _uiRefresh.Tick += (s, e) => UpdatePlaybackUi();
+            _uiRefresh.Start();
+
+            _serviceRefresh.Interval = TimeSpan.FromSeconds(5);
+            _serviceRefresh.Tick += ServiceRefresh_Tick;
+
+            _toastTimer.Interval = TimeSpan.FromSeconds(4);
+            _toastTimer.Tick += (s, e) =>
+            {
+                _toastTimer.Stop();
+                ToastBorder.Visibility = Visibility.Collapsed;
+            };
         }
 
         async void MainPage_Loaded(object sender, RoutedEventArgs e)
         {
-            CoreUrlBox.Text = string.IsNullOrWhiteSpace(_core.BaseUrl) ? "http://10.26.30.20:8080" : _core.BaseUrl;
-            if (!_core.HasSavedLogin) { Show(LoginPanel); return; }
-            try { await BringOnline(true); await LoadLibrary(); Show(MusicPanel); }
-            catch (Exception ex) { LoginStatusText.Text = ex.Message; Show(LoginPanel); }
+            CoreUrlBox.Text = string.IsNullOrWhiteSpace(_core.BaseUrl)
+                ? "http://10.26.30.20:8080"
+                : _core.BaseUrl;
+            SooloosHostBox.Text = ReadSetting(SooloosHostSetting);
+
+            var saved = ReadSetting(EditionSetting).ToLowerInvariant();
+            if (saved != "core" && saved != "sooloos")
+            {
+                ShowFirstRun();
+                return;
+            }
+
+            _mode = saved;
+            ConfigureEdition();
+
+            if (_mode == "core")
+            {
+                if (!_core.HasSavedLogin)
+                {
+                    ShowSetup();
+                    return;
+                }
+
+                try
+                {
+                    await BringCoreOnline(true);
+                    await LoadLibrary();
+                    ShowShell();
+                }
+                catch (Exception ex)
+                {
+                    SetupStatusText.Text = ex.Message;
+                    ShowSetup();
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(SooloosHostBox.Text))
+                {
+                    ShowSetup();
+                    return;
+                }
+
+                try
+                {
+                    await ConnectSooloos();
+                    await LoadLibrary();
+                    ShowShell();
+                }
+                catch (Exception ex)
+                {
+                    SetupStatusText.Text = ex.Message;
+                    ShowSetup();
+                }
+            }
         }
 
-        async void ConnectButton_Click(object sender, RoutedEventArgs e)
+        void CoreEditionButton_Click(object sender, RoutedEventArgs e)
         {
-            ConnectButton.IsEnabled = false;
+            SelectEdition("core");
+        }
+
+        void SooloosEditionButton_Click(object sender, RoutedEventArgs e)
+        {
+            SelectEdition("sooloos");
+        }
+
+        void SelectEdition(string mode)
+        {
+            _mode = mode;
+            WriteSetting(EditionSetting, mode);
+            ConfigureEdition();
+            ShowSetup();
+        }
+
+        void ConfigureEdition()
+        {
+            var core = _mode == "core";
+            CoreSetupFields.Visibility = core ? Visibility.Visible : Visibility.Collapsed;
+            SooloosSetupFields.Visibility = core ? Visibility.Collapsed : Visibility.Visible;
+            SetupHeadingText.Text = core ? "Connect Brimstone Core" : "Connect Sooloos";
+            SetupHelpText.Text = core
+                ? "Connect once. After that this Xbox boots straight into Your Music."
+                : "Connect directly to the Meridian/Sooloos Core on this network.";
+            SetupConnectButton.Content = core ? "Connect Core" : "Connect Sooloos";
+
+            EditionBadgeText.Text = core ? "CORE · XBOX" : "SOOLOOS · XBOX";
+            SettingsEditionText.Text = core ? "Core" : "Sooloos";
+            FooterSignalText.Text = core ? "Brimstone audio" : "Meridian / Sooloos";
+        }
+
+        async void SetupConnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetupConnectButton.IsEnabled = false;
+            SetupStatusText.Text = "";
+
             try
             {
-                LoginStatusText.Text = "Signing in...";
-                await _core.LoginAsync(CoreUrlBox.Text, UsernameBox.Text, PasswordBox.Password);
-                LoginStatusText.Text = "Pairing Xbox...";
-                await BringOnline(true);
+                if (_mode == "core")
+                {
+                    SetupStatusText.Text = "Signing in…";
+                    await _core.LoginAsync(CoreUrlBox.Text, UsernameBox.Text, PasswordBox.Password);
+                    SetupStatusText.Text = "Pairing Xbox…";
+                    await BringCoreOnline(true);
+                    PasswordBox.Password = "";
+                }
+                else
+                {
+                    WriteSetting(SooloosHostSetting, SooloosHostBox.Text);
+                    SetupStatusText.Text = "Connecting to Sooloos…";
+                    await ConnectSooloos();
+                }
+
+                SetupStatusText.Text = "Loading Your Music…";
                 await LoadLibrary();
-                PasswordBox.Password = "";
-                LoginStatusText.Text = "";
-                Show(MusicPanel);
-                Toast("Xbox paired to Brimstone Core");
+                SetupStatusText.Text = "";
+                ShowShell();
+                Toast(_mode == "core" ? "Brimstone Core connected" : "Sooloos connected");
             }
-            catch (Exception ex) { LoginStatusText.Text = ex.Message; Toast(ex.Message); }
-            finally { ConnectButton.IsEnabled = true; }
+            catch (Exception ex)
+            {
+                SetupStatusText.Text = ex.Message;
+                Toast(ex.Message);
+            }
+            finally
+            {
+                SetupConnectButton.IsEnabled = true;
+            }
         }
 
-        async Task BringOnline(bool allowPair)
+        void SetupBackButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_server == null) { _server = new EndpointServer(() => _core.DeviceToken); await _server.StartAsync(); }
-            if (string.IsNullOrWhiteSpace(_server.Address)) throw new InvalidOperationException("Xbox has no usable LAN address.");
+            ShowFirstRun();
+        }
+
+        async Task BringCoreOnline(bool allowPair)
+        {
+            if (_server == null)
+            {
+                _server = new EndpointServer(() => _core.DeviceToken);
+                await _server.StartAsync();
+            }
+
+            if (string.IsNullOrWhiteSpace(_server.Address))
+                throw new InvalidOperationException("Xbox has no usable LAN address.");
+
             if (!_core.HasDeviceCredential)
             {
                 if (!allowPair) throw new InvalidOperationException("Xbox is not paired.");
                 await _core.PairDeviceAsync(XboxIdentity.EndpointId);
             }
+
             await _core.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address);
-            ConnectionText.Text = "Core connected - Xbox online";
-            UpdateSettings();
+            ConnectionText.Text = "Core connected";
+            OutputText.Text = "Xbox";
+            FooterOutputText.Text = "Xbox";
             _heartbeat.Start();
+            _serviceRefresh.Start();
+            UpdateSettings();
+        }
+
+        async Task ConnectSooloos()
+        {
+            var host = SooloosClient.NormaliseHost(SooloosHostBox.Text);
+            if (string.IsNullOrWhiteSpace(host))
+                throw new InvalidOperationException("Enter the Sooloos Core address.");
+
+            _sooloos = new SooloosClient(host);
+            var zones = await _sooloos.ZonesAsync();
+            if (zones.Count == 0)
+                throw new InvalidOperationException("Sooloos connected, but no zones were returned.");
+
+            _sooloosZoneId = zones[0].Id;
+            _currentZone = zones[0];
+            WriteSetting(SooloosHostSetting, host);
+            SooloosHostBox.Text = host;
+            ConnectionText.Text = "Sooloos connected";
+            OutputText.Text = _currentZone.Name;
+            FooterOutputText.Text = _currentZone.Name;
+            _heartbeat.Stop();
+            _serviceRefresh.Start();
+            UpdateSettings();
         }
 
         async void Heartbeat_Tick(object sender, object e)
         {
-            if (_server == null || !_core.HasDeviceCredential) return;
+            if (_mode != "core" || _server == null || !_core.HasDeviceCredential) return;
             try
             {
                 await _core.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address);
-                ConnectionText.Text = "Core connected - Xbox online";
+                ConnectionText.Text = "Core connected";
             }
-            catch { ConnectionText.Text = "Core connection interrupted"; }
+            catch
+            {
+                ConnectionText.Text = "Core interrupted";
+            }
+        }
+
+        async void ServiceRefresh_Tick(object sender, object e)
+        {
+            if (_serviceRefreshBusy) return;
+            _serviceRefreshBusy = true;
+            try
+            {
+                if (_mode == "sooloos")
+                    await RefreshSooloosState();
+                else if (_mode == "core")
+                {
+                    if (QueuePanel.Visibility == Visibility.Visible)
+                        await RefreshQueue();
+                    if (RipPanel.Visibility == Visibility.Visible)
+                        await RefreshRipStatus();
+                }
+            }
+            catch
+            {
+                // Keep TV playback usable during a transient discovery/API failure.
+            }
+            finally
+            {
+                _serviceRefreshBusy = false;
+            }
         }
 
         async Task LoadLibrary()
         {
-            var albums = await _core.GetAlbumsAsync();
+            List<CoreAlbum> albums;
+            if (_mode == "sooloos")
+            {
+                if (_sooloos == null) await ConnectSooloos();
+                albums = await _sooloos.SearchAlbumsAsync();
+                LibrarySummaryText.Text = albums.Count + " albums · " + (_currentZone == null ? "Sooloos" : _currentZone.Name);
+            }
+            else
+            {
+                albums = await _core.GetAlbumsAsync();
+                LibrarySummaryText.Text = albums.Count + (albums.Count == 1 ? " album" : " albums") + " · Brimstone Core";
+            }
             AlbumGrid.ItemsSource = albums;
-            LibrarySummaryText.Text = albums.Count + (albums.Count == 1 ? " album" : " albums") + " from Core";
         }
 
         void AlbumGrid_ItemClick(object sender, ItemClickEventArgs e)
         {
             _album = e.ClickedItem as CoreAlbum;
             if (_album == null) return;
+
             AlbumTitleText.Text = _album.Title;
             AlbumArtistText.Text = _album.Artist;
-            TracksList.ItemsSource = _album.Tracks;
-            Show(AlbumPanel);
+
+            if (_mode == "core")
+            {
+                TracksList.Visibility = Visibility.Visible;
+                TracksList.ItemsSource = _album.Tracks;
+            }
+            else
+            {
+                TracksList.Visibility = Visibility.Collapsed;
+                TracksList.ItemsSource = null;
+            }
+
+            ShowContent(AlbumPanel);
+            PlayAlbumButton.Focus(FocusState.Programmatic);
         }
 
         async void TracksList_ItemClick(object sender, ItemClickEventArgs e)
         {
+            if (_mode != "core") return;
             var track = e.ClickedItem as CoreTrack;
             if (track == null) return;
-            try { await _core.PlayTrackAsync(XboxIdentity.EndpointId, track.Id); Show(NowPlayingPanel); }
-            catch (Exception ex) { Toast(ex.Message); }
+
+            try
+            {
+                await _core.PlayTrackAsync(XboxIdentity.EndpointId, track.Id);
+                ShowContent(NowPlayingPanel);
+            }
+            catch (Exception ex)
+            {
+                Toast(ex.Message);
+            }
         }
 
         async void PlayAlbumButton_Click(object sender, RoutedEventArgs e)
         {
             if (_album == null) return;
-            try { await _core.PlayAlbumAsync(XboxIdentity.EndpointId, _album.Tracks.Select(t => t.Id)); Show(NowPlayingPanel); }
-            catch (Exception ex) { Toast(ex.Message); }
+
+            try
+            {
+                if (_mode == "sooloos")
+                {
+                    if (_sooloos == null || string.IsNullOrWhiteSpace(_sooloosZoneId))
+                        throw new InvalidOperationException("No Sooloos zone is selected.");
+                    await _sooloos.PlayAlbumAsync(_sooloosZoneId, _album.Id);
+                    await RefreshSooloosState();
+                }
+                else
+                {
+                    await _core.PlayAlbumAsync(XboxIdentity.EndpointId, _album.Tracks.Select(t => t.Id));
+                }
+                ShowContent(NowPlayingPanel);
+            }
+            catch (Exception ex)
+            {
+                Toast(ex.Message);
+            }
         }
 
         async Task Transport(string action)
         {
-            try { await _core.ControlAsync(XboxIdentity.EndpointId, action); }
-            catch (Exception ex) { Toast(ex.Message); }
+            try
+            {
+                if (_mode == "sooloos")
+                {
+                    if (_sooloos == null || string.IsNullOrWhiteSpace(_sooloosZoneId))
+                        throw new InvalidOperationException("No Sooloos zone is selected.");
+                    await _sooloos.ControlAsync(_sooloosZoneId, action);
+                    await RefreshSooloosState();
+                }
+                else
+                {
+                    await _core.ControlAsync(XboxIdentity.EndpointId, action);
+                }
+            }
+            catch (Exception ex)
+            {
+                Toast(ex.Message);
+            }
         }
 
-        async void PlayPauseButton_Click(object sender, RoutedEventArgs e) =>
-            await Transport(PlaybackService.Instance.Snapshot().Playing ? "pause" : "resume");
+        async void PlayPauseButton_Click(object sender, RoutedEventArgs e)
+        {
+            var playing = _mode == "sooloos"
+                ? _currentZone != null && (_currentZone.State ?? "").IndexOf("play", StringComparison.OrdinalIgnoreCase) >= 0
+                : PlaybackService.Instance.Snapshot().Playing;
+            await Transport(playing ? "pause" : "resume");
+        }
+
         async void StopButton_Click(object sender, RoutedEventArgs e) => await Transport("stop");
         async void PreviousButton_Click(object sender, RoutedEventArgs e) => await Transport("previous");
         async void NextButton_Click(object sender, RoutedEventArgs e) => await Transport("next");
 
-        void MusicNavButton_Click(object sender, RoutedEventArgs e) => Show(MusicPanel);
-        void NowNavButton_Click(object sender, RoutedEventArgs e) => Show(NowPlayingPanel);
-        void RipNavButton_Click(object sender, RoutedEventArgs e) => Show(RipPanel);
-        void BackToLibraryButton_Click(object sender, RoutedEventArgs e) => Show(MusicPanel);
+        void MusicNavButton_Click(object sender, RoutedEventArgs e) => ShowContent(MusicPanel);
 
-        void SettingsNavButton_Click(object sender, RoutedEventArgs e) { UpdateSettings(); Show(SettingsPanel); }
+        async void QueueNavButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowContent(QueuePanel);
+            await RefreshQueue();
+        }
+
+        void NowNavButton_Click(object sender, RoutedEventArgs e) => ShowContent(NowPlayingPanel);
+
+        async void RipNavButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowContent(RipPanel);
+            await RefreshRipStatus();
+        }
+
+        void BackToLibraryButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowContent(MusicPanel);
+            MusicNavButton.Focus(FocusState.Programmatic);
+        }
+
+        void SettingsNavButton_Click(object sender, RoutedEventArgs e)
+        {
+            UpdateSettings();
+            ShowContent(SettingsPanel);
+        }
 
         async void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
-            try { await LoadLibrary(); Toast("Library refreshed"); }
-            catch (Exception ex) { Toast(ex.Message); }
+            try
+            {
+                await LoadLibrary();
+                Toast("Library refreshed");
+            }
+            catch (Exception ex)
+            {
+                Toast(ex.Message);
+            }
         }
 
-        async void RepairButton_Click(object sender, RoutedEventArgs e)
+        async Task RefreshQueue()
         {
-            try { await _core.PairDeviceAsync(XboxIdentity.EndpointId); await BringOnline(false); Toast("Xbox re-paired"); }
-            catch (Exception ex) { Toast(ex.Message); }
+            if (_mode == "sooloos")
+            {
+                await RefreshSooloosState();
+                QueueList.ItemsSource = new List<QueueItem>();
+                QueueSummaryText.Text = _currentZone == null
+                    ? "Sooloos queue"
+                    : _currentZone.Name + " · " + (_currentZone.Title ?? "Ready");
+                return;
+            }
+
+            try
+            {
+                var queue = await _core.GetQueueAsync(XboxIdentity.EndpointId);
+                QueueList.ItemsSource = queue;
+                QueueSummaryText.Text = queue.Count == 0
+                    ? "Nothing queued"
+                    : queue.Count + (queue.Count == 1 ? " item" : " items") + " · Xbox";
+            }
+            catch (Exception ex)
+            {
+                QueueSummaryText.Text = ex.Message;
+            }
         }
 
-        void ForgetButton_Click(object sender, RoutedEventArgs e)
+        async Task RefreshSooloosState()
         {
-            _heartbeat.Stop(); _core.Forget(); _server?.Dispose(); _server = null;
-            AlbumGrid.ItemsSource = null; ConnectionText.Text = "Not connected"; Show(LoginPanel);
+            if (_sooloos == null) return;
+            var zones = await _sooloos.ZonesAsync();
+            if (zones.Count == 0) return;
+
+            _currentZone = zones.FirstOrDefault(z => z.Id == _sooloosZoneId) ?? zones[0];
+            _sooloosZoneId = _currentZone.Id;
+            OutputText.Text = _currentZone.Name;
+            FooterOutputText.Text = _currentZone.Name;
+            ConnectionText.Text = "Sooloos connected";
+            UpdatePlaybackUi();
+        }
+
+        async Task RefreshRipStatus()
+        {
+            if (_mode == "sooloos")
+            {
+                RipModeText.Text = "AUTO-RIP READY";
+                RipStatusText.Text = "Sooloos ingest is not armed yet";
+                RipDetailText.Text = "The TV flow is locked: insert disc → identify → rip → verify → library. Direct Sooloos publication and Xbox UHD-drive access are the next hardware validation step.";
+                return;
+            }
+
+            try
+            {
+                var summary = await _core.GetIngestSummaryAsync();
+                RipModeText.Text = summary.AutoRip ? "AUTO-RIP ON" : "AUTO-RIP AVAILABLE";
+
+                if (summary.ActiveJobs > 0)
+                {
+                    RipStatusText.Text = "Ripping " + (string.IsNullOrWhiteSpace(summary.CurrentJob) ? "music disc" : summary.CurrentJob);
+                    RipDetailText.Text = "Brimstone is copying and verifying the disc. It will appear in Your Music when complete.";
+                }
+                else if (summary.OpticalDrives > 0)
+                {
+                    RipStatusText.Text = "Waiting for a music disc";
+                    RipDetailText.Text = summary.AutoRip
+                        ? "Insert a disc in the Core optical drive. Brimstone will identify, rip, verify, add it to Your Music and eject automatically."
+                        : "Core can see an optical drive. Automatic ingest is not enabled on that Core yet.";
+                }
+                else
+                {
+                    RipStatusText.Text = "Xbox auto-rip armed";
+                    RipDetailText.Text = "No external Core optical drive is visible. The Series X internal UHD drive is the next supported-API probe; Brimstone will use it automatically if Xbox exposes legal music-disc access.";
+                }
+            }
+            catch (Exception ex)
+            {
+                RipStatusText.Text = "Rip status unavailable";
+                RipDetailText.Text = ex.Message;
+            }
+        }
+
+        void RipNowButton_Click(object sender, RoutedEventArgs e)
+        {
+            Toast("Auto-rip is the default — insert a music disc.");
+        }
+
+        void ChangeEditionButton_Click(object sender, RoutedEventArgs e)
+        {
+            _heartbeat.Stop();
+            _serviceRefresh.Stop();
+            _mode = "";
+            _settings.Values.Remove(EditionSetting);
+            ShowFirstRun();
+        }
+
+        void ReconnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowSetup();
         }
 
         void Page_KeyDown(object sender, KeyRoutedEventArgs e)
         {
-            if (e.Key == VirtualKey.GamepadView) { Show(NowPlayingPanel); e.Handled = true; }
-            else if (e.Key == VirtualKey.GamepadMenu) { UpdateSettings(); Show(SettingsPanel); e.Handled = true; }
-            else if (e.Key == VirtualKey.GamepadB && AlbumPanel.Visibility == Visibility.Visible) { Show(MusicPanel); e.Handled = true; }
+            if (ShellPanel.Visibility == Visibility.Visible)
+            {
+                if (e.Key == VirtualKey.GamepadView)
+                {
+                    ShowContent(NowPlayingPanel);
+                    e.Handled = true;
+                }
+                else if (e.Key == VirtualKey.GamepadMenu)
+                {
+                    UpdateSettings();
+                    ShowContent(SettingsPanel);
+                    e.Handled = true;
+                }
+                else if (e.Key == VirtualKey.GamepadB && AlbumPanel.Visibility == Visibility.Visible)
+                {
+                    ShowContent(MusicPanel);
+                    e.Handled = true;
+                }
+            }
+            else if (SetupPanel.Visibility == Visibility.Visible && e.Key == VirtualKey.GamepadB)
+            {
+                ShowFirstRun();
+                e.Handled = true;
+            }
         }
 
         void UpdatePlaybackUi()
         {
-            var p = PlaybackService.Instance.Snapshot();
-            var title = string.IsNullOrWhiteSpace(p.Title) ? "Nothing playing" : p.Title;
-            NowTitleText.Text = title; NowArtistText.Text = p.Artist ?? ""; NowAlbumText.Text = p.Album ?? "";
+            string title;
+            string artist;
+            string album;
+            bool playing;
+            string state;
+
+            if (_mode == "sooloos" && _currentZone != null)
+            {
+                title = string.IsNullOrWhiteSpace(_currentZone.Title) ? "Nothing playing" : _currentZone.Title;
+                artist = _currentZone.Subtitle ?? "";
+                album = "";
+                state = _currentZone.State ?? "";
+                playing = state.IndexOf("play", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            else
+            {
+                var p = PlaybackService.Instance.Snapshot();
+                title = string.IsNullOrWhiteSpace(p.Title) ? "Nothing playing" : p.Title;
+                artist = p.Artist ?? "";
+                album = p.Album ?? "";
+                state = p.State ?? "";
+                playing = p.Playing;
+            }
+
+            NowTitleText.Text = title;
+            NowArtistText.Text = artist;
+            NowAlbumText.Text = album;
             FooterTitleText.Text = title;
-            FooterMetaText.Text = string.Join(" · ", new[] { p.Artist, p.Album, p.State }.Where(v => !string.IsNullOrWhiteSpace(v)));
-            PlayPauseButton.Content = p.Playing ? "Pause" : "Play";
-            FooterPlayPauseButton.Content = p.Playing ? "Ⅱ" : "▶";
+            FooterMetaText.Text = string.Join(" · ", new[] { artist, album, state }.Where(v => !string.IsNullOrWhiteSpace(v)));
+            PlayPauseButton.Content = playing ? "Ⅱ  Pause" : "▶  Play";
+            FooterPlayPauseButton.Content = playing ? "Ⅱ" : "▶";
         }
 
         void UpdateSettings()
         {
-            SettingsCoreText.Text = string.IsNullOrWhiteSpace(_core.BaseUrl) ? "Not configured" : _core.BaseUrl;
-            SettingsEndpointText.Text = XboxIdentity.EndpointId;
-            SettingsAddressText.Text = _server?.Address ?? "Listener not started";
+            SettingsEditionText.Text = _mode == "sooloos" ? "Sooloos" : "Core";
+            SettingsCoreText.Text = _mode == "sooloos"
+                ? (string.IsNullOrWhiteSpace(ReadSetting(SooloosHostSetting)) ? "Sooloos not configured" : ReadSetting(SooloosHostSetting))
+                : (string.IsNullOrWhiteSpace(_core.BaseUrl) ? "Core not configured" : _core.BaseUrl);
+            SettingsEndpointText.Text = _mode == "sooloos"
+                ? (_currentZone == null ? "No Sooloos zone" : _currentZone.Name)
+                : XboxIdentity.EndpointId;
         }
 
-        void Show(UIElement panel)
+        void ShowFirstRun()
         {
-            LoginPanel.Visibility = MusicPanel.Visibility = AlbumPanel.Visibility =
-            NowPlayingPanel.Visibility = RipPanel.Visibility = SettingsPanel.Visibility = Visibility.Collapsed;
+            FirstRunPanel.Visibility = Visibility.Visible;
+            SetupPanel.Visibility = Visibility.Collapsed;
+            ShellPanel.Visibility = Visibility.Collapsed;
+            CoreEditionButton.Focus(FocusState.Programmatic);
+        }
+
+        void ShowSetup()
+        {
+            FirstRunPanel.Visibility = Visibility.Collapsed;
+            SetupPanel.Visibility = Visibility.Visible;
+            ShellPanel.Visibility = Visibility.Collapsed;
+            ConfigureEdition();
+
+            if (_mode == "sooloos")
+            {
+                SooloosHostBox.Text = ReadSetting(SooloosHostSetting);
+                SooloosHostBox.Focus(FocusState.Programmatic);
+            }
+            else
+            {
+                CoreUrlBox.Text = string.IsNullOrWhiteSpace(_core.BaseUrl)
+                    ? "http://10.26.30.20:8080"
+                    : _core.BaseUrl;
+                CoreUrlBox.Focus(FocusState.Programmatic);
+            }
+        }
+
+        void ShowShell()
+        {
+            FirstRunPanel.Visibility = Visibility.Collapsed;
+            SetupPanel.Visibility = Visibility.Collapsed;
+            ShellPanel.Visibility = Visibility.Visible;
+            ConfigureEdition();
+            UpdateSettings();
+            UpdatePlaybackUi();
+            ShowContent(MusicPanel);
+            MusicNavButton.Focus(FocusState.Programmatic);
+        }
+
+        void ShowContent(UIElement panel)
+        {
+            MusicPanel.Visibility = AlbumPanel.Visibility = QueuePanel.Visibility =
+                NowPlayingPanel.Visibility = RipPanel.Visibility = SettingsPanel.Visibility = Visibility.Collapsed;
             panel.Visibility = Visibility.Visible;
         }
 
-        void Toast(string message) { ToastText.Text = message ?? ""; ToastBorder.Visibility = Visibility.Visible; }
+        void Toast(string message)
+        {
+            ToastText.Text = message ?? "";
+            ToastBorder.Visibility = Visibility.Visible;
+            _toastTimer.Stop();
+            _toastTimer.Start();
+        }
+
+        string ReadSetting(string key)
+        {
+            object value;
+            return _settings.Values.TryGetValue(key, out value) ? value as string ?? "" : "";
+        }
+
+        void WriteSetting(string key, string value)
+        {
+            _settings.Values[key] = value ?? "";
+        }
     }
 }
