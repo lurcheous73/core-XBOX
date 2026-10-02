@@ -199,6 +199,26 @@ namespace BrimstoneXbox.Services
         public JsonObject BuildEndpoint()
         {
             var p = PlaybackService.Instance.Snapshot();
+
+            var controls = new JsonArray();
+            foreach (var value in new[]
+            {
+                "play", "resume", "pause", "stop",
+                "next", "previous", "volume", "mute"
+            })
+                controls.Add(JsonValue.CreateStringValue(value));
+
+            var transports = new JsonArray();
+            transports.Add(JsonValue.CreateStringValue("pcm"));
+
+            var devices = new JsonArray();
+            devices.Add(new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue("default"),
+                ["name"] = JsonValue.CreateStringValue("Xbox audio output"),
+                ["default"] = JsonValue.CreateBooleanValue(true)
+            });
+
             return new JsonObject
             {
                 ["id"] = JsonValue.CreateStringValue(XboxIdentity.EndpointId),
@@ -212,7 +232,12 @@ namespace BrimstoneXbox.Services
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
                     ["optical_rip"] = JsonValue.CreateBooleanValue(true),
-                    ["queue"] = JsonValue.CreateBooleanValue(true)
+                    ["queue"] = JsonValue.CreateBooleanValue(true),
+                    ["programme"] = JsonValue.CreateBooleanValue(true),
+                    ["control_api"] = JsonValue.CreateStringValue("xbox-native-v1"),
+                    ["controls"] = controls,
+                    ["transports"] = transports,
+                    ["devices"] = devices
                 }
             };
         }
