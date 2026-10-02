@@ -23,6 +23,12 @@ namespace BrimstoneXbox.Services
             _http.Timeout = TimeSpan.FromSeconds(8);
         }
 
+        public async Task<bool> TestConnectionAsync()
+        {
+            await EnsureSessionAsync();
+            return !string.IsNullOrWhiteSpace(_sessionId);
+        }
+
         public async Task<List<CoreAlbum>> SearchAlbumsAsync(string query = "")
         {
             var fields = new JsonObject
