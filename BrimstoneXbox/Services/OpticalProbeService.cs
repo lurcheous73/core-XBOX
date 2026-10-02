@@ -136,6 +136,91 @@ namespace BrimstoneXbox.Services
             return result;
         }
 
+        async Task<JsonObject> ProbeUdfReaderAsync()
+        {
+            try
+            {
+                var stream = await ScsiOpticalStream.OpenAsync();
+
+                return await Task.Run(() =>
+                {
+                    using (stream)
+                    {
+                        var result = new JsonObject
+                        {
+                            ["sector_size"] = JsonValue.CreateNumberValue(stream.SectorSize),
+                            ["length_bytes"] = JsonValue.CreateNumberValue(stream.Length)
+                        };
+
+                        stream.Position = 0;
+                        var detected = UdfReader.Detect(stream);
+                        result["detected"] = JsonValue.CreateBooleanValue(detected);
+                        if (!detected)
+                            return result;
+
+                        stream.Position = 0;
+                        using (var udf = new UdfReader(stream, stream.SectorSize))
+                        {
+                            result["volume_label"] = JsonValue.CreateStringValue(
+                                udf.VolumeLabel ?? "");
+
+                            var directories = new JsonArray();
+                            var rootDirectories = udf.Root.GetDirectories();
+                            foreach (var directory in rootDirectories)
+                                directories.Add(JsonValue.CreateStringValue(
+                                    directory.Name ?? ""));
+                            result["root_directories"] = directories;
+
+                            var audio = rootDirectories.FirstOrDefault(
+                                d => string.Equals(
+                                    d.Name,
+                                    "AUDIO_TS",
+                                    StringComparison.OrdinalIgnoreCase));
+
+                            var audioResult = new JsonObject
+                            {
+                                ["present"] = JsonValue.CreateBooleanValue(audio != null)
+                            };
+
+                            if (audio != null)
+                            {
+                                var files = new JsonArray();
+                                long totalBytes = 0;
+                                foreach (var file in audio.GetFiles())
+                                {
+                                    var length = file.Length;
+                                    totalBytes += length;
+                                    files.Add(new JsonObject
+                                    {
+                                        ["name"] = JsonValue.CreateStringValue(file.Name ?? ""),
+                                        ["full_name"] = JsonValue.CreateStringValue(file.FullName ?? ""),
+                                        ["bytes"] = JsonValue.CreateNumberValue(length)
+                                    });
+                                }
+
+                                audioResult["files"] = files;
+                                audioResult["file_count"] =
+                                    JsonValue.CreateNumberValue(files.Count);
+                                audioResult["bytes"] =
+                                    JsonValue.CreateNumberValue(totalBytes);
+                            }
+
+                            result["audio_ts"] = audioResult;
+                            return result;
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return new JsonObject
+                {
+                    ["detected"] = JsonValue.CreateBooleanValue(false),
+                    ["error"] = JsonValue.CreateStringValue(Describe(ex))
+                };
+            }
+        }
+
         async Task<JsonObject> ProbeMountedMediaAsync()
         {
             var result = new JsonObject();
