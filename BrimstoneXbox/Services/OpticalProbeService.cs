@@ -5,6 +5,7 @@ using Windows.Devices.Custom;
 using Windows.Devices.Enumeration;
 using Windows.Foundation.Metadata;
 using Windows.Storage.Streams;
+using WinBuffer = Windows.Storage.Streams.Buffer;
 
 namespace BrimstoneXbox.Services
 {
@@ -115,12 +116,12 @@ namespace BrimstoneXbox.Services
             // IOCTL_CDROM_READ_TOC:
             // CTL_CODE(FILE_DEVICE_CD_ROM=2, function=0, METHOD_BUFFERED, FILE_READ_ACCESS)
             var ioctl = new IOControlCode(
-                0x00000002,
-                0x0000,
+                (ushort)0x0002,
+                (ushort)0x0000,
                 IOControlAccessMode.Read,
                 IOControlBufferingMethod.Buffered);
 
-            var output = new Buffer(804);
+            var output = new WinBuffer(804);
             var ok = await device.TrySendIOControlAsync(ioctl, null, output);
 
             var toc = new JsonObject
