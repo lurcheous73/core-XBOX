@@ -11,7 +11,8 @@ namespace BrimstoneXbox.Services
     {
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         readonly OpticalProbeService _optical = new OpticalProbeService();
-        readonly CdRipService _cdRip = new CdRipService();\n        readonly BluRayAudioService _bluRay = new BluRayAudioService();
+        readonly CdRipService _cdRip = new CdRipService();
+        readonly BluRayAudioService _bluRay = new BluRayAudioService();
         readonly NativeCatalogueService _catalogue = new NativeCatalogueService();
         readonly CoreStackSupervisor _stack;
 
@@ -21,7 +22,7 @@ namespace BrimstoneXbox.Services
 
         public XboxCoreRuntime()
         {
-            _stack = new CoreStackSupervisor(_optical, _cdRip);
+            _stack = new CoreStackSupervisor(_optical, _cdRip, _bluRay);
         }
 
         public bool Running { get; private set; }
@@ -31,7 +32,14 @@ namespace BrimstoneXbox.Services
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
         public Task<JsonObject> GetRipStatusAsync() => _cdRip.CurrentStatusAsync();
-        public Task<JsonObject> RipNowAsync() => _cdRip.AutoRipCurrentDiscAsync();\n        public Task<JsonObject> ScanBluRayAsync() => _bluRay.ScanAsync();\n        public Task<JsonObject> CreateBluRayRipPlanAsync(string playlist, bool keepVideo) =>\n            _bluRay.CreateRipPlanAsync(playlist, keepVideo);
+        public Task<JsonObject> RipNowAsync() => _cdRip.AutoRipCurrentDiscAsync();
+        public Task<JsonObject> ScanBluRayAsync() => _bluRay.ScanAsync();
+        public Task<JsonObject> CreateBluRayRipPlanAsync(string playlist, bool keepVideo) =>
+            _bluRay.CreateRipPlanAsync(playlist, keepVideo);
+        public Task<JsonObject> RipBluRayTitleAsync(string playlist, bool keepVideo) =>
+            _bluRay.RipSelectedTitleAsync(playlist, keepVideo);
+        public Task<JsonObject> GetBluRayRipStatusAsync() =>
+            _bluRay.CurrentRipStatusAsync();
         public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
         public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
         public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
@@ -278,7 +286,7 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.10"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.16"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
@@ -371,6 +379,11 @@ namespace BrimstoneXbox.Services
                 ["auto_rip"] = JsonValue.CreateBooleanValue(true),
                 ["raw_cdda"] = JsonValue.CreateBooleanValue(true),
                 ["eject"] = JsonValue.CreateBooleanValue(true),
+                ["bluray_auto_rip"] = JsonValue.CreateBooleanValue(true),
+                ["bluray_mpls_titles"] = JsonValue.CreateBooleanValue(true),
+                ["bluray_source_stage"] = JsonValue.CreateBooleanValue(true),
+                ["mkv_rip_plan"] = JsonValue.CreateBooleanValue(true),
+                ["makemkv_helper_contract"] = JsonValue.CreateBooleanValue(true),
                 ["platform"] = JsonValue.CreateStringValue("xbox-customdevice")
             };
         }
@@ -405,7 +418,19 @@ namespace BrimstoneXbox.Services
             if (state != "idle")
             {
                 var job = JsonObject.Parse(status.Stringify());
-                job["label"] = JsonValue.CreateStringValue("Xbox optical disc");
+                job["label"] = JsonValue.CreateStringValue("Xbox CD");
+                jobs.Add(job);
+            }
+
+            var bluRayStatus = await _bluRay.CurrentRipStatusAsync();
+            var bluRayState = bluRayStatus.ContainsKey("state") &&
+                               bluRayStatus["state"].ValueType == JsonValueType.String
+                ? bluRayStatus["state"].GetString()
+                : "idle";
+            if (bluRayState != "idle" && bluRayState != "not_run")
+            {
+                var job = JsonObject.Parse(bluRayStatus.Stringify());
+                job["label"] = JsonValue.CreateStringValue("Xbox Blu-ray Audio");
                 jobs.Add(job);
             }
 
@@ -423,7 +448,7 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.14-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.16-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
                 ["uptime_seconds"] = JsonValue.CreateNumberValue(
