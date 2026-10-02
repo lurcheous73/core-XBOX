@@ -96,7 +96,7 @@ namespace BrimstoneXbox.Services
             await PersistAsync();
         }
 
-        Task StartCastAsync()
+        async Task StartCastAsync()
         {
             var state = Service("core-cast");
             Starting(state, "Starting native Xbox playback/cast broker");
@@ -104,8 +104,10 @@ namespace BrimstoneXbox.Services
             try
             {
                 var playback = PlaybackService.Instance;
+                await playback.InitialisePreferredOutputAsync();
                 Running(state,
-                    "MediaPlayer renderer + Sooloos broker available",
+                    "MediaPlayer renderer · " + playback.AudioOutputName +
+                    " · Sooloos broker available",
                     "xbox-media-broker");
             }
             catch (Exception ex)
@@ -113,7 +115,7 @@ namespace BrimstoneXbox.Services
                 Failed(state, ex);
             }
 
-            return PersistAsync();
+            await PersistAsync();
         }
 
         Task StartCoreAuthorityAsync()
