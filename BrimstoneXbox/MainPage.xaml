@@ -497,7 +497,7 @@
                         </Grid.RowDefinitions>
                         <StackPanel>
                             <TextBlock Text="Rip Disc" FontSize="46" FontWeight="SemiBold"/>
-                            <TextBlock Text="Insert it. Brimstone does the rest." FontSize="20" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
+                            <TextBlock Text="Insert it. Brimstone identifies, rips and files it automatically." FontSize="20" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
                         </StackPanel>
                         <Border Grid.Row="1" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="24"
                                 Padding="36" Margin="0,28,0,0">
@@ -529,7 +529,7 @@
                                                   Content="Keep video with the lossless audio"
                                                   IsChecked="False" FontSize="18"/>
                                         <Button x:Name="PrepareBluRayButton"
-                                                Content="Prepare lossless MKV rip"
+                                                Content="Rip selected title"
                                                 HorizontalAlignment="Left" Margin="0,12,0,0"
                                                 Click="PrepareBluRayButton_Click"/>
                                     </StackPanel>
