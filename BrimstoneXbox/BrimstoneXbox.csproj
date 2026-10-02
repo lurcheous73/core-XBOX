@@ -60,6 +60,7 @@
     <Compile Include="Services\CoreClient.cs" />
     <Compile Include="Services\XboxCoreRuntime.cs" />
     <Compile Include="Services\CoreStackSupervisor.cs" />
+    <Compile Include="Services\NativeCatalogueService.cs" />
     <Compile Include="Services\LocalCoreApiServer.cs" />
     <Compile Include="Services\OpticalProbeService.cs" />
     <Compile Include="Services\CdRipService.cs" />
