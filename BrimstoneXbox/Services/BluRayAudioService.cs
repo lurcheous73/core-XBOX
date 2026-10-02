@@ -12,8 +12,11 @@ namespace BrimstoneXbox.Services
     public sealed class BluRayAudioService
     {
         JsonObject _lastScan = State("not_run");
+        JsonObject _lastRip = State("idle");
+        bool _ripBusy;
 
         public JsonObject LastScan => _lastScan;
+        public JsonObject LastRip => _lastRip;
 
         public async Task<JsonObject> ScanAsync()
         {
@@ -100,6 +103,234 @@ namespace BrimstoneXbox.Services
 
             await PersistAsync("bluray-rip-plan.json", plan);
             return plan;
+        }
+
+        public async Task<JsonObject> RipSelectedTitleAsync(
+            string playlistFile,
+            bool keepVideo)
+        {
+            if (_ripBusy)
+                throw new InvalidOperationException("A Blu-ray rip is already running.");
+
+            var plan = await CreateRipPlanAsync(playlistFile, keepVideo);
+            if (GetBool(plan, "protection_detected"))
+            {
+                _lastRip = new JsonObject
+                {
+                    ["state"] = JsonValue.CreateStringValue("helper_required"),
+                    ["disc_type"] = JsonValue.CreateStringValue("bluray-audio"),
+                    ["playlist"] = JsonValue.CreateStringValue(GetString(plan, "playlist", "")),
+                    ["backend"] = JsonValue.CreateStringValue("makemkv-helper"),
+                    ["error"] = JsonValue.CreateStringValue(
+                        "AACS-protected Blu-ray needs a MakeMKV-capable helper with direct access to the optical disc.")
+                };
+                await PersistAsync("bluray-rip-status.json", _lastRip);
+                return _lastRip;
+            }
+
+            _ripBusy = true;
+            try
+            {
+                var removable = KnownFolders.RemovableDevices;
+                var volumes = await removable.GetFoldersAsync();
+                StorageFolder selectedVolume = null;
+                StorageFolder streamFolder = null;
+
+                foreach (var volume in volumes)
+                {
+                    try
+                    {
+                        var bdmv = await volume.GetFolderAsync("BDMV");
+                        var stream = await bdmv.GetFolderAsync("STREAM");
+                        selectedVolume = volume;
+                        streamFolder = stream;
+                        break;
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                if (selectedVolume == null || streamFolder == null)
+                    throw new InvalidOperationException("The Blu-ray STREAM folder is not readable.");
+
+                var clips = plan.GetNamedArray("clips", new JsonArray());
+                if (clips.Count == 0)
+                    throw new InvalidOperationException("The selected Blu-ray title contains no clips.");
+
+                var root = ApplicationData.Current.LocalFolder;
+                var core = await root.CreateFolderAsync(
+                    "Core", CreationCollisionOption.OpenIfExists);
+                var ingest = await core.CreateFolderAsync(
+                    "Ingest", CreationCollisionOption.OpenIfExists);
+                var bluRayRoot = await ingest.CreateFolderAsync(
+                    "BluRay", CreationCollisionOption.OpenIfExists);
+
+                var safeLabel = SafeName(GetString(plan, "disc_label", "Blu-ray"));
+                var playlistId = SafeName(GetString(plan, "playlist_id", "title"));
+                var folderName = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") +
+                    "-" + safeLabel + "-" + playlistId;
+                var jobFolder = await bluRayRoot.CreateFolderAsync(
+                    folderName, CreationCollisionOption.GenerateUniqueName);
+                var sourceFolder = await jobFolder.CreateFolderAsync(
+                    "SOURCE", CreationCollisionOption.OpenIfExists);
+
+                var uniqueFiles = new List<string>();
+                foreach (var value in clips)
+                {
+                    if (value.ValueType != JsonValueType.Object)
+                        continue;
+
+                    var name = GetString(value.GetObject(), "stream_file", "");
+                    if (!string.IsNullOrWhiteSpace(name) &&
+                        !uniqueFiles.Any(x => string.Equals(
+                            x, name, StringComparison.OrdinalIgnoreCase)))
+                        uniqueFiles.Add(name);
+                }
+
+                ulong totalBytes = 0;
+                var sources = new List<SourceFile>();
+                foreach (var name in uniqueFiles)
+                {
+                    var source = await streamFolder.GetFileAsync(name);
+                    var props = await source.GetBasicPropertiesAsync();
+                    totalBytes += props.Size;
+                    sources.Add(new SourceFile
+                    {
+                        File = source,
+                        Name = name,
+                        Bytes = props.Size
+                    });
+                }
+
+                ulong copiedBytes = 0;
+                var copied = new JsonArray();
+                _lastRip = new JsonObject
+                {
+                    ["state"] = JsonValue.CreateStringValue("ripping"),
+                    ["disc_type"] = JsonValue.CreateStringValue("bluray-audio"),
+                    ["disc_label"] = JsonValue.CreateStringValue(selectedVolume.Name ?? ""),
+                    ["playlist"] = JsonValue.CreateStringValue(GetString(plan, "playlist", "")),
+                    ["playlist_id"] = JsonValue.CreateStringValue(GetString(plan, "playlist_id", "")),
+                    ["folder"] = JsonValue.CreateStringValue(jobFolder.Name ?? ""),
+                    ["file_count"] = JsonValue.CreateNumberValue(sources.Count),
+                    ["completed_files"] = JsonValue.CreateNumberValue(0),
+                    ["bytes_total"] = JsonValue.CreateNumberValue(totalBytes),
+                    ["bytes_copied"] = JsonValue.CreateNumberValue(0),
+                    ["progress_percent"] = JsonValue.CreateNumberValue(0),
+                    ["current_file"] = JsonValue.CreateStringValue(""),
+                    ["files"] = copied,
+                    ["started_utc"] = JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"))
+                };
+                await PersistAsync("bluray-rip-status.json", _lastRip);
+
+                for (var i = 0; i < sources.Count; i++)
+                {
+                    var source = sources[i];
+                    _lastRip["current_file"] =
+                        JsonValue.CreateStringValue(source.Name ?? "");
+                    await PersistAsync("bluray-rip-status.json", _lastRip);
+
+                    var targetName = (i + 1).ToString("000") + "-" + source.Name;
+                    var target = await source.File.CopyAsync(
+                        sourceFolder,
+                        targetName,
+                        NameCollisionOption.ReplaceExisting);
+
+                    copiedBytes += source.Bytes;
+                    copied.Add(new JsonObject
+                    {
+                        ["source"] = JsonValue.CreateStringValue(source.Name ?? ""),
+                        ["file"] = JsonValue.CreateStringValue(target.Name ?? targetName),
+                        ["bytes"] = JsonValue.CreateNumberValue(source.Bytes)
+                    });
+
+                    _lastRip["completed_files"] =
+                        JsonValue.CreateNumberValue(i + 1);
+                    _lastRip["bytes_copied"] =
+                        JsonValue.CreateNumberValue(copiedBytes);
+                    _lastRip["progress_percent"] =
+                        JsonValue.CreateNumberValue(totalBytes == 0
+                            ? 0
+                            : Math.Round(copiedBytes * 100.0 / totalBytes, 1));
+                    await PersistAsync("bluray-rip-status.json", _lastRip);
+                }
+
+                var manifest = JsonObject.Parse(plan.Stringify());
+                manifest["state"] = JsonValue.CreateStringValue("source_staged");
+                manifest["source_folder"] = JsonValue.CreateStringValue(
+                    "Core/Ingest/BluRay/" + jobFolder.Name + "/SOURCE");
+                manifest["staged_files"] = copied;
+                manifest["completed_utc"] =
+                    JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"));
+
+                var manifestFile = await jobFolder.CreateFileAsync(
+                    "title-manifest.json",
+                    CreationCollisionOption.ReplaceExisting);
+                await FileIO.WriteTextAsync(manifestFile, manifest.Stringify());
+
+                _lastRip["state"] = JsonValue.CreateStringValue("source_staged");
+                _lastRip["current_file"] = JsonValue.CreateStringValue("");
+                _lastRip["progress_percent"] = JsonValue.CreateNumberValue(100);
+                _lastRip["manifest"] = JsonValue.CreateStringValue(
+                    "Core/Ingest/BluRay/" + jobFolder.Name + "/title-manifest.json");
+                _lastRip["backend_state"] =
+                    JsonValue.CreateStringValue("remux_engine_pending");
+                _lastRip["completed_utc"] =
+                    JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"));
+
+                await PersistAsync("bluray-rip-status.json", _lastRip);
+                return _lastRip;
+            }
+            catch (Exception ex)
+            {
+                _lastRip = new JsonObject
+                {
+                    ["state"] = JsonValue.CreateStringValue("failed"),
+                    ["error"] = JsonValue.CreateStringValue(Describe(ex))
+                };
+                await PersistAsync("bluray-rip-status.json", _lastRip);
+                return _lastRip;
+            }
+            finally
+            {
+                _ripBusy = false;
+            }
+        }
+
+        public async Task<JsonObject> CurrentRipStatusAsync()
+        {
+            try
+            {
+                var root = ApplicationData.Current.LocalFolder;
+                var core = await root.GetFolderAsync("Core");
+                var ingest = await core.GetFolderAsync("Ingest");
+                var file = await ingest.GetFileAsync("bluray-rip-status.json");
+                var text = await FileIO.ReadTextAsync(file);
+                JsonObject parsed;
+                if (JsonObject.TryParse(text, out parsed))
+                {
+                    _lastRip = parsed;
+                    return parsed;
+                }
+            }
+            catch
+            {
+            }
+
+            return _lastRip ?? State("idle");
+        }
+
+        static string SafeName(string value)
+        {
+            var raw = string.IsNullOrWhiteSpace(value) ? "disc" : value.Trim();
+            var invalid = System.IO.Path.GetInvalidFileNameChars();
+            var cleaned = new string(raw
+                .Select(ch => invalid.Contains(ch) ? '-' : ch)
+                .ToArray())
+                .Trim()
+                .TrimEnd('.');
+            return string.IsNullOrWhiteSpace(cleaned) ? "disc" : cleaned;
         }
 
         async Task<JsonObject> ScanVolumeAsync(StorageFolder volume)
@@ -466,6 +697,13 @@ namespace BrimstoneXbox.Services
         {
             return ex.GetType().Name + " 0x" + ex.HResult.ToString("X8") +
                    ": " + ex.Message;
+        }
+
+        sealed class SourceFile
+        {
+            public StorageFile File;
+            public string Name;
+            public ulong Bytes;
         }
 
         sealed class PlaylistInfo
