@@ -821,6 +821,7 @@ namespace BrimstoneXbox
 
             try
             {
+                SendBluRayToCoreButton.Visibility = Visibility.Collapsed;
                 var bluRayRip = await _nativeCore.GetBluRayRipStatusAsync();
                 var bluRayState = JsonString(bluRayRip, "state", "idle");
                 if (bluRayState == "ripping")
@@ -842,8 +843,9 @@ namespace BrimstoneXbox
                     RipModeText.Text = "BLU-RAY AUTO-RIP";
                     RipStatusText.Text = "Blu-ray source rip complete";
                     RipDetailText.Text =
-                        "The selected title is safely staged in Core. Lossless MKV remux is queued as the next ingest stage.";
+                        "The selected MPLS title and source clips are safely staged on Xbox. Finish on another Core to reconstruct the exact playlist and publish verified stereo/multichannel FLAC.";
                     BluRayOptionsPanel.Visibility = Visibility.Collapsed;
+                    SendBluRayToCoreButton.Visibility = Visibility.Visible;
                     return;
                 }
 
@@ -948,6 +950,61 @@ namespace BrimstoneXbox
             {
                 RipStatusText.Text = "Rip status unavailable";
                 RipDetailText.Text = ex.Message;
+            }
+        }
+
+        async void SendBluRayToCoreButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            if (!_core.HasSavedLogin)
+            {
+                UpdateSettings();
+                ShowContent(SettingsPanel);
+                TransferCoreUrlBox.Focus(FocusState.Programmatic);
+                Toast("Connect the destination Core first");
+                return;
+            }
+
+            SendBluRayToCoreButton.IsEnabled = false;
+            try
+            {
+                var status = await _nativeCore.GetBluRayRipStatusAsync();
+                RipStatusText.Text = "Sending Blu-ray title to Core…";
+                RipDetailText.Text =
+                    "Uploading the exact MPLS clip chain. Core Ingest will reconstruct the selected title and publish the best stereo plus each multichannel layout.";
+
+                var result = await _core.ImportStagedBluRayAsync(status);
+                var ingestResult =
+                    result.ContainsKey("result") &&
+                    result["result"].ValueType == Windows.Data.Json.JsonValueType.Object
+                        ? result.GetNamedObject("result")
+                        : null;
+                var outputs = ingestResult != null &&
+                              ingestResult.ContainsKey("outputs") &&
+                              ingestResult["outputs"].ValueType == Windows.Data.Json.JsonValueType.Array
+                    ? ingestResult.GetNamedArray("outputs").Count
+                    : 0;
+
+                RipStatusText.Text = "Blu-ray published on Core";
+                RipDetailText.Text =
+                    "Playlist reconstructed and verified" +
+                    (outputs > 0
+                        ? " · " + outputs +
+                          (outputs == 1 ? " audio edition" : " audio editions")
+                        : "") +
+                    ". The Xbox source rip is retained as recovery media.";
+                Toast("Blu-ray Core ingest complete");
+            }
+            catch (Exception ex)
+            {
+                RipStatusText.Text = "Blu-ray Core ingest failed";
+                RipDetailText.Text = ex.Message;
+                Toast(ex.Message);
+            }
+            finally
+            {
+                SendBluRayToCoreButton.IsEnabled = true;
             }
         }
 
