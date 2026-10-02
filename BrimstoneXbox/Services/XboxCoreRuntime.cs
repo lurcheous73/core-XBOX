@@ -47,7 +47,7 @@ namespace BrimstoneXbox.Services
 
             // Hardware-validation proof: do not block the couch UI while a whole
             // audio track is read. The service persists its own progress/result.
-            _ = _cdRip.RipFirstTrackProofAsync();
+            _ = _cdRip.AutoRipCurrentDiscAsync();
 
             _api = new LocalCoreApiServer(BuildHealth, BuildRuntime, BuildOptical);
             try
