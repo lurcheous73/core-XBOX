@@ -89,11 +89,6 @@ namespace BrimstoneXbox.Services
                         row["raw_open"] = JsonValue.CreateBooleanValue(false);
                         row["raw_open_error"] = JsonValue.CreateStringValue(Describe(ex));
                     }
-                    finally
-                    {
-                        custom?.Dispose();
-                    }
-
                     devicesJson.Add(row);
                 }
 
