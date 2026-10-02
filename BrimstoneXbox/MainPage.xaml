@@ -9,28 +9,28 @@
 
     <Page.Resources>
         <DataTemplate x:Key="AlbumRailTemplate" x:DataType="models:CoreAlbum">
-            <Border Width="214" Height="256" Margin="7" CornerRadius="14"
+            <Border Width="184" Height="220" Margin="6" CornerRadius="12"
                     Background="#191920" BorderBrush="#34313D" BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="190"/>
+                        <RowDefinition Height="160"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Border Margin="8,8,8,0" CornerRadius="10" Background="#2A2035">
                         <Grid>
-                            <TextBlock Text="◉" FontSize="64" Foreground="#A47AFF"
+                            <TextBlock Text="◉" FontSize="50" Foreground="#A47AFF"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
                             <Border Background="#C20A0A0D" VerticalAlignment="Bottom" Padding="9,5">
-                                <TextBlock Text="{x:Bind Artist}" FontSize="13"
+                                <TextBlock Text="{x:Bind Artist}" FontSize="11"
                                            TextTrimming="CharacterEllipsis"/>
                             </Border>
                         </Grid>
                     </Border>
                     <StackPanel Grid.Row="1" Margin="12,9,12,8">
-                        <TextBlock Text="{x:Bind Title}" FontSize="17" FontWeight="SemiBold"
+                        <TextBlock Text="{x:Bind Title}" FontSize="15" FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{x:Bind Meta}" FontSize="12"
+                        <TextBlock Text="{x:Bind Meta}" FontSize="11"
                                    Foreground="{StaticResource BrimstoneMuted}" Margin="0,2,0,0"/>
                     </StackPanel>
                 </Grid>
@@ -140,26 +140,26 @@
             <!-- Everyday TV shell: use music, don't administer servers. -->
             <Grid x:Name="ShellPanel" Visibility="Collapsed">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="86"/>
+                    <RowDefinition Height="72"/>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="104"/>
+                    <RowDefinition Height="84"/>
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" Background="#0C0C10" Padding="46,0">
+                <Grid Grid.Row="0" Background="#0C0C10" Padding="34,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="38"/>
+                        <ColumnDefinition Width="28"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="48" Height="48" CornerRadius="12" Background="{StaticResource BrimstoneAccent}" Margin="0,0,13,0">
-                            <TextBlock Text="B" FontSize="29" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border Width="40" Height="40" CornerRadius="10" Background="{StaticResource BrimstoneAccent}" Margin="0,0,13,0">
+                            <TextBlock Text="B" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="BRIMSTONE CORE" FontSize="20" FontWeight="Bold"/>
-                            <TextBlock x:Name="EditionBadgeText" Text="CORE · XBOX" FontSize="12" Foreground="#B995FF"/>
+                            <TextBlock Text="BRIMSTONE CORE" FontSize="17" FontWeight="Bold"/>
+                            <TextBlock x:Name="EditionBadgeText" Text="CORE · XBOX" FontSize="11" Foreground="#B995FF"/>
                         </StackPanel>
                     </StackPanel>
 
@@ -171,15 +171,15 @@
                         <Button x:Name="SettingsNavButton" Content="Settings" Click="SettingsNavButton_Click"/>
                     </StackPanel>
 
-                    <Border Grid.Column="3" Background="#1A1A21" CornerRadius="12" Padding="16,9" VerticalAlignment="Center">
+                    <Border Grid.Column="3" Background="#1A1A21" CornerRadius="10" Padding="12,7" VerticalAlignment="Center">
                         <StackPanel>
-                            <TextBlock x:Name="OutputText" Text="Xbox" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Right"/>
-                            <TextBlock x:Name="ConnectionText" Text="Ready" FontSize="12" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Right"/>
+                            <TextBlock x:Name="OutputText" Text="Xbox" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                            <TextBlock x:Name="ConnectionText" Text="Ready" FontSize="11" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Border>
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="48,28,48,22">
+                <Grid Grid.Row="1" Margin="36,20,36,16">
                     <Grid x:Name="MusicPanel">
                         <ScrollViewer VerticalScrollMode="Enabled"
                                       VerticalScrollBarVisibility="Hidden"
@@ -188,7 +188,7 @@
                             <StackPanel>
 
                                 <!-- Hero: current playback, or the newest album when idle. -->
-                                <Border x:Name="HomeHeroBorder" Height="250" CornerRadius="22"
+                                <Border x:Name="HomeHeroBorder" Height="208" CornerRadius="18"
                                         BorderBrush="#3C3448" BorderThickness="1" Margin="0,0,0,24">
                                     <Border.Background>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -200,23 +200,23 @@
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="390"/>
+                                            <ColumnDefinition Width="326"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <StackPanel Margin="38,28,20,28" VerticalAlignment="Center">
+                                        <StackPanel Margin="30,22,18,22" VerticalAlignment="Center">
                                             <TextBlock x:Name="HeroEyebrowText" Text="BRIMSTONE CORE"
                                                        FontSize="14" FontWeight="Bold" Foreground="#C6A1FF"/>
                                             <TextBlock x:Name="HeroTitleText" Text="Your Music"
-                                                       FontSize="46" FontWeight="SemiBold" TextWrapping="Wrap"
+                                                       FontSize="38" FontWeight="SemiBold" TextWrapping="Wrap"
                                                        MaxWidth="780" Margin="0,8,0,4"/>
                                             <TextBlock x:Name="HeroArtistText" Text="Xbox Core is ready"
-                                                       FontSize="22" Foreground="{StaticResource BrimstoneMuted}"
+                                                       FontSize="18" Foreground="{StaticResource BrimstoneMuted}"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="760"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
                                                 <Button x:Name="HeroPlayButton" Content="▶  Play"
-                                                        MinWidth="170" Background="{StaticResource BrimstoneAccent}"
+                                                        MinWidth="145" Background="{StaticResource BrimstoneAccent}"
                                                         Click="HeroPlayButton_Click"/>
-                                                <Button Content="Rip a CD" MinWidth="150"
+                                                <Button Content="Rip a CD" MinWidth="126"
                                                         Click="HeroRipButton_Click"/>
                                             </StackPanel>
                                         </StackPanel>
@@ -230,11 +230,11 @@
                                                     </LinearGradientBrush>
                                                 </Rectangle.Fill>
                                             </Rectangle>
-                                            <Border Width="224" Height="224" HorizontalAlignment="Right"
-                                                    VerticalAlignment="Center" Margin="0,0,28,0"
+                                            <Border Width="184" Height="184" HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center" Margin="0,0,22,0"
                                                     CornerRadius="18" Background="#2A2035">
                                                 <Grid>
-                                                    <TextBlock Text="◉" FontSize="82" Foreground="#A47AFF"
+                                                    <TextBlock Text="◉" FontSize="64" Foreground="#A47AFF"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                     <Image x:Name="HeroArtworkImage" Stretch="UniformToFill"/>
                                                 </Grid>
@@ -244,9 +244,9 @@
                                 </Border>
 
                                 <StackPanel x:Name="ContinueSection" Visibility="Collapsed" Margin="0,0,0,22">
-                                    <TextBlock Text="Continue Listening" FontSize="27" FontWeight="SemiBold"
+                                    <TextBlock Text="Continue Listening" FontSize="22" FontWeight="SemiBold"
                                                Margin="2,0,0,8"/>
-                                    <GridView x:Name="ContinueGrid" Height="270"
+                                    <GridView x:Name="ContinueGrid" Height="230"
                                               ItemTemplate="{StaticResource AlbumRailTemplate}"
                                               IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
                                               SelectionMode="None"
@@ -257,7 +257,7 @@
                                         <GridView.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="270"/>
+                                                               ItemWidth="228" ItemHeight="230"/>
                                             </ItemsPanelTemplate>
                                         </GridView.ItemsPanel>
                                     </GridView>
@@ -270,7 +270,7 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="Recently Added" FontSize="27" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Recently Added" FontSize="22" FontWeight="SemiBold"/>
                                             <TextBlock x:Name="LibrarySummaryText" Text="Loading library…"
                                                        FontSize="14" Foreground="{StaticResource BrimstoneMuted}"
                                                        Margin="2,3,0,0"/>
@@ -278,7 +278,7 @@
                                         <Button Grid.Column="1" Content="Refresh" VerticalAlignment="Bottom"
                                                 Click="RefreshButton_Click"/>
                                     </Grid>
-                                    <GridView x:Name="RecentlyAddedGrid" Height="270" Margin="-7,8,-7,0"
+                                    <GridView x:Name="RecentlyAddedGrid" Height="230" Margin="-7,8,-7,0"
                                               ItemTemplate="{StaticResource AlbumRailTemplate}"
                                               IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
                                               SelectionMode="None"
@@ -289,15 +289,15 @@
                                         <GridView.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="270"/>
+                                                               ItemWidth="228" ItemHeight="230"/>
                                             </ItemsPanelTemplate>
                                         </GridView.ItemsPanel>
                                     </GridView>
                                 </StackPanel>
 
                                 <StackPanel Margin="0,0,0,22">
-                                    <TextBlock Text="Your Albums" FontSize="27" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                                    <GridView x:Name="AlbumGrid" Height="270" Margin="-7,0,-7,0"
+                                    <TextBlock Text="Your Albums" FontSize="22" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                                    <GridView x:Name="AlbumGrid" Height="230" Margin="-7,0,-7,0"
                                               ItemTemplate="{StaticResource AlbumRailTemplate}"
                                               IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
                                               SelectionMode="None"
@@ -308,15 +308,15 @@
                                         <GridView.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="270"/>
+                                                               ItemWidth="228" ItemHeight="230"/>
                                             </ItemsPanelTemplate>
                                         </GridView.ItemsPanel>
                                     </GridView>
                                 </StackPanel>
 
                                 <StackPanel x:Name="RecentlyRippedSection" Margin="0,0,0,22">
-                                    <TextBlock Text="Recently Ripped" FontSize="27" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                                    <GridView x:Name="RecentlyRippedGrid" Height="270" Margin="-7,0,-7,0"
+                                    <TextBlock Text="Recently Ripped" FontSize="22" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                                    <GridView x:Name="RecentlyRippedGrid" Height="230" Margin="-7,0,-7,0"
                                               ItemTemplate="{StaticResource AlbumRailTemplate}"
                                               IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
                                               SelectionMode="None"
@@ -327,15 +327,15 @@
                                         <GridView.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="270"/>
+                                                               ItemWidth="228" ItemHeight="230"/>
                                             </ItemsPanelTemplate>
                                         </GridView.ItemsPanel>
                                     </GridView>
                                 </StackPanel>
 
                                 <StackPanel x:Name="FavouriteSection" Visibility="Collapsed" Margin="0,0,0,24">
-                                    <TextBlock Text="Favourites" FontSize="27" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                                    <GridView x:Name="FavouritesGrid" Height="270" Margin="-7,0,-7,0"
+                                    <TextBlock Text="Favourites" FontSize="22" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                                    <GridView x:Name="FavouritesGrid" Height="230" Margin="-7,0,-7,0"
                                               ItemTemplate="{StaticResource AlbumRailTemplate}"
                                               IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
                                               SelectionMode="None"
@@ -346,7 +346,7 @@
                                         <GridView.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="270"/>
+                                                               ItemWidth="228" ItemHeight="230"/>
                                             </ItemsPanelTemplate>
                                         </GridView.ItemsPanel>
                                     </GridView>
@@ -378,7 +378,7 @@
                             <StackPanel Grid.Row="1" Margin="4,26,0,22">
                                 <TextBlock x:Name="AlbumTitleText" FontSize="48" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                 <TextBlock x:Name="AlbumArtistText" FontSize="25" Foreground="{StaticResource BrimstoneMuted}" Margin="0,6,0,0"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
                                     <Button x:Name="PlayAlbumButton" Content="▶  Play album"
                                             Background="{StaticResource BrimstoneAccent}"
                                             HorizontalAlignment="Left" MinWidth="210"
@@ -403,7 +403,7 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="{x:Bind Title}" FontSize="19" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="{x:Bind Artist}" FontSize="13" Foreground="{StaticResource BrimstoneMuted}"/>
+                                                <TextBlock Text="{x:Bind Artist}" FontSize="11" Foreground="{StaticResource BrimstoneMuted}"/>
                                             </StackPanel>
                                             <TextBlock Grid.Column="1" Text="{x:Bind DurationText}" FontSize="14"
                                                        Foreground="{StaticResource BrimstoneMuted}" VerticalAlignment="Center"/>
@@ -420,8 +420,8 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <StackPanel>
-                            <TextBlock Text="Queue" FontSize="46" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="QueueSummaryText" Text="What plays next" FontSize="19" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
+                            <TextBlock Text="Queue" FontSize="38" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="QueueSummaryText" Text="What plays next" FontSize="16" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
                         </StackPanel>
                         <ListView x:Name="QueueList" Grid.Row="1" Margin="0,20,0,0" SelectionMode="None">
                             <ListView.ItemTemplate>
@@ -447,19 +447,19 @@
 
                     <Grid x:Name="NowPlayingPanel" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="470"/>
-                            <ColumnDefinition Width="58"/>
+                            <ColumnDefinition Width="390"/>
+                            <ColumnDefinition Width="44"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Border Width="440" Height="440" CornerRadius="26" Background="#2A2035" VerticalAlignment="Center">
-                            <TextBlock Text="◉" FontSize="150" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border Width="360" Height="360" CornerRadius="22" Background="#2A2035" VerticalAlignment="Center">
+                            <TextBlock Text="◉" FontSize="118" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                             <TextBlock Text="NOW PLAYING" FontSize="15" Foreground="#B995FF" FontWeight="Bold"/>
-                            <TextBlock x:Name="NowTitleText" Text="Nothing playing" FontSize="52" FontWeight="SemiBold"
+                            <TextBlock x:Name="NowTitleText" Text="Nothing playing" FontSize="42" FontWeight="SemiBold"
                                        TextWrapping="Wrap" Margin="0,12,0,8"/>
-                            <TextBlock x:Name="NowArtistText" FontSize="27" Foreground="{StaticResource BrimstoneMuted}"/>
-                            <TextBlock x:Name="NowAlbumText" FontSize="19" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,26"/>
+                            <TextBlock x:Name="NowArtistText" FontSize="22" Foreground="{StaticResource BrimstoneMuted}"/>
+                            <TextBlock x:Name="NowAlbumText" FontSize="16" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,26"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="|◀" Click="PreviousButton_Click"/>
                                 <Button x:Name="PlayPauseButton" Content="Pause" Background="{StaticResource BrimstoneAccent}" Click="PlayPauseButton_Click"/>
@@ -475,38 +475,38 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <StackPanel>
-                            <TextBlock Text="Rip Disc" FontSize="46" FontWeight="SemiBold"/>
-                            <TextBlock Text="Insert it. Brimstone identifies, rips and files it automatically." FontSize="20" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
+                            <TextBlock Text="Rip Disc" FontSize="38" FontWeight="SemiBold"/>
+                            <TextBlock Text="Insert it. Brimstone identifies, rips and files it automatically." FontSize="17" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
                         </StackPanel>
-                        <Border Grid.Row="1" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="24"
-                                Padding="36" Margin="0,28,0,0">
+                        <Border Grid.Row="1" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20"
+                                Padding="28" Margin="0,20,0,0">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="300"/>
-                                    <ColumnDefinition Width="42"/>
+                                    <ColumnDefinition Width="242"/>
+                                    <ColumnDefinition Width="32"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Width="280" Height="280" CornerRadius="140" Background="#111116" BorderBrush="#5B3F79" BorderThickness="2">
+                                <Border Width="224" Height="224" CornerRadius="112" Background="#111116" BorderBrush="#5B3F79" BorderThickness="2">
                                     <Grid>
-                                        <Ellipse Width="210" Height="210" Stroke="#6B5D78" StrokeThickness="2"/>
-                                        <Ellipse Width="54" Height="54" Fill="#09090C" Stroke="#7D6C8E" StrokeThickness="2"/>
-                                        <TextBlock Text="AUTO" FontSize="17" FontWeight="Bold" Foreground="#B995FF"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,42"/>
+                                        <Ellipse Width="168" Height="168" Stroke="#6B5D78" StrokeThickness="2"/>
+                                        <Ellipse Width="44" Height="44" Fill="#09090C" Stroke="#7D6C8E" StrokeThickness="2"/>
+                                        <TextBlock Text="AUTO" FontSize="14" FontWeight="Bold" Foreground="#B995FF"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,34"/>
                                     </Grid>
                                 </Border>
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                    <TextBlock x:Name="RipModeText" Text="AUTO-RIP ON" FontSize="16" FontWeight="Bold" Foreground="#B995FF"/>
-                                    <TextBlock x:Name="RipStatusText" Text="Waiting for a music disc" FontSize="38" FontWeight="SemiBold"
+                                    <TextBlock x:Name="RipModeText" Text="AUTO-RIP ON" FontSize="14" FontWeight="Bold" Foreground="#B995FF"/>
+                                    <TextBlock x:Name="RipStatusText" Text="Waiting for a music disc" FontSize="31" FontWeight="SemiBold"
                                                TextWrapping="Wrap" Margin="0,9,0,8"/>
                                     <TextBlock x:Name="RipDetailText" Text="Music discs are identified, ripped, verified, added to Your Music and ejected automatically."
-                                               FontSize="20" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" MaxWidth="770"/>
+                                               FontSize="17" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" MaxWidth="690"/>
                                     <StackPanel x:Name="BluRayOptionsPanel" Visibility="Collapsed" Margin="0,22,0,0">
                                         <TextBlock Text="BLU-RAY TITLES" FontSize="14" FontWeight="Bold" Foreground="#B995FF"/>
-                                        <ComboBox x:Name="BluRayTitleCombo" Width="620" HorizontalAlignment="Left"
+                                        <ComboBox x:Name="BluRayTitleCombo" Width="520" HorizontalAlignment="Left"
                                                   DisplayMemberPath="Label" Margin="0,8,0,10"/>
                                         <CheckBox x:Name="KeepBluRayVideoCheckBox"
                                                   Content="Keep video with the lossless audio"
-                                                  IsChecked="False" FontSize="18"/>
+                                                  IsChecked="False" FontSize="15"/>
                                         <Button x:Name="PrepareBluRayButton"
                                                 Content="Rip selected title"
                                                 HorizontalAlignment="Left" Margin="0,12,0,0"
@@ -516,7 +516,7 @@
                                             Content="⇧  Finish on another Core"
                                             HorizontalAlignment="Left"
                                             Margin="0,18,0,0"
-                                            MinWidth="260"
+                                            MinWidth="220"
                                             Click="SendBluRayToCoreButton_Click"
                                             Visibility="Collapsed"/>
                                     <Button x:Name="RipNowButton" Content="Rip now" HorizontalAlignment="Left" Margin="0,24,0,0"
@@ -532,10 +532,10 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <StackPanel>
-                            <TextBlock Text="Settings" FontSize="46" FontWeight="SemiBold"/>
-                            <TextBlock Text="The boring stuff stays deliberately small." FontSize="19" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
+                            <TextBlock Text="Settings" FontSize="38" FontWeight="SemiBold"/>
+                            <TextBlock Text="The boring stuff stays deliberately small." FontSize="16" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
                         </StackPanel>
-                        <Grid Grid.Row="1" Margin="0,26,0,0">
+                        <Grid Grid.Row="1" Margin="0,20,0,0">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="20"/>
@@ -547,26 +547,26 @@
                                 <ColumnDefinition Width="1*"/>
                             </Grid.ColumnDefinitions>
 
-                            <Border Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="24">
+                            <Border Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="16" Padding="18">
                                 <StackPanel>
                                     <TextBlock Text="Mode" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock x:Name="SettingsEditionText" Text="Standalone Core" FontSize="28" FontWeight="SemiBold" Margin="0,4,0,8"/>
+                                    <TextBlock x:Name="SettingsEditionText" Text="Standalone Core" FontSize="23" FontWeight="SemiBold" Margin="0,4,0,8"/>
                                     <TextBlock Text="This Xbox is the Core: library, playback, ripping and API all run locally."
                                                FontSize="15" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Grid.Column="2" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20" Padding="24">
+                            <Border Grid.Column="2" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="16" Padding="18">
                                 <StackPanel>
                                     <TextBlock Text="Xbox Core" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock Text="xbox-core.local" FontSize="27" FontWeight="SemiBold" Margin="0,4,0,8"/>
+                                    <TextBlock Text="xbox-core.local" FontSize="22" FontWeight="SemiBold" Margin="0,4,0,8"/>
                                     <TextBlock x:Name="SettingsCoreText" Text="Not configured" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,8"/>
                                     <TextBlock x:Name="SettingsEndpointText" FontSize="13" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
 
                             <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#17171D" BorderBrush="#34313D"
-                                    BorderThickness="1" CornerRadius="20" Padding="24">
+                                    BorderThickness="1" CornerRadius="16" Padding="18">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="1*"/>
@@ -603,7 +603,7 @@
                     </Grid>
                 </Grid>
 
-                <Border Grid.Row="2" Background="#111116" BorderBrush="#292731" BorderThickness="0,1,0,0" Padding="46,13">
+                <Border Grid.Row="2" Background="#111116" BorderBrush="#292731" BorderThickness="0,1,0,0" Padding="34,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -611,8 +611,8 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock x:Name="FooterTitleText" Text="Nothing playing" FontSize="20" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="FooterMetaText" Text="Ready" FontSize="13" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,0"/>
+                            <TextBlock x:Name="FooterTitleText" Text="Nothing playing" FontSize="17" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="FooterMetaText" Text="Ready" FontSize="11" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,0"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button Content="|◀" Click="PreviousButton_Click"/>
@@ -621,17 +621,17 @@
                             <Button Content="▶|" Click="NextButton_Click"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <TextBlock x:Name="FooterOutputText" Text="Xbox" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Right"/>
-                            <TextBlock x:Name="FooterSignalText" Text="Brimstone audio" FontSize="12" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Right"/>
+                            <TextBlock x:Name="FooterOutputText" Text="Xbox" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                            <TextBlock x:Name="FooterSignalText" Text="Brimstone audio" FontSize="11" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
 
             <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Margin="0,0,0,126" Background="#F02B2038" CornerRadius="12" Padding="20,13"
+                    Margin="0,0,0,102" Background="#F02B2038" CornerRadius="10" Padding="16,10"
                     Visibility="Collapsed">
-                <TextBlock x:Name="ToastText" FontSize="18"/>
+                <TextBlock x:Name="ToastText" FontSize="15"/>
             </Border>
         </Grid>
     </Viewbox>
