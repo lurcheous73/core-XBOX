@@ -63,6 +63,7 @@ namespace BrimstoneXbox
         {
             _mode = "standalone";
             WriteSetting(EditionSetting, "standalone");
+            _settings.Values.Remove("sooloosHost");
 
             CoreUrlBox.Text = string.IsNullOrWhiteSpace(_core.BaseUrl)
                 ? ""
