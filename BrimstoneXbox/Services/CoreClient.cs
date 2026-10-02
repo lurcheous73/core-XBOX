@@ -320,8 +320,7 @@ namespace BrimstoneXbox.Services
                     "&edition=" + Uri.EscapeDataString("Xbox rip");
 
                 using (var request = new HttpRequestMessage(HttpMethod.Put, new Uri(target)))
-                using (var source = await file.OpenStreamForReadAsync())
-                using (var content = new StreamContent(source))
+                using (var content = await StorageFileHttpContent.CreateAsync(file))
                 {
                     request.Headers.Accept.Add(
                         new MediaTypeWithQualityHeaderValue("application/json"));
