@@ -130,11 +130,46 @@ namespace BrimstoneXbox.Services
             if (!validUser || !string.Equals(password ?? "", expectedPassword, StringComparison.Ordinal))
                 throw new UnauthorizedAccessException("Invalid Core username or password.");
 
+            var user = BuildAdminUser();
             return new JsonObject
             {
+                ["ok"] = JsonValue.CreateBooleanValue(true),
                 ["token"] = JsonValue.CreateStringValue(_apiToken),
+                ["expires_at"] = JsonValue.CreateStringValue(""),
                 ["username"] = JsonValue.CreateStringValue("admin"),
-                ["role"] = JsonValue.CreateStringValue("admin")
+                ["role"] = JsonValue.CreateStringValue("admin"),
+                ["user"] = user
+            };
+        }
+
+        public JsonObject BuildAuthState()
+        {
+            return new JsonObject
+            {
+                ["configured"] = JsonValue.CreateBooleanValue(true),
+                ["password_auth"] = JsonValue.CreateBooleanValue(true),
+                ["bundled_admin"] = JsonValue.CreateBooleanValue(true)
+            };
+        }
+
+        public JsonObject BuildAuthMe()
+        {
+            return new JsonObject
+            {
+                ["user"] = BuildAdminUser()
+            };
+        }
+
+        JsonObject BuildAdminUser()
+        {
+            return new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue("admin"),
+                ["username"] = JsonValue.CreateStringValue("admin"),
+                ["display_name"] = JsonValue.CreateStringValue("Administrator"),
+                ["role"] = JsonValue.CreateStringValue("admin"),
+                ["enabled"] = JsonValue.CreateBooleanValue(true),
+                ["master"] = JsonValue.CreateBooleanValue(true)
             };
         }
 
@@ -182,6 +217,30 @@ namespace BrimstoneXbox.Services
             };
         }
 
+        public JsonObject BuildZones()
+        {
+            var endpoint = BuildEndpoint();
+            var transports = new JsonArray();
+            transports.Add(JsonValue.CreateStringValue("coreaudio"));
+
+            var zone = new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue("xbox-local"),
+                ["name"] = JsonValue.CreateStringValue("Xbox"),
+                ["endpoint_id"] = JsonValue.CreateStringValue(XboxIdentity.EndpointId),
+                ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
+                ["transport"] = JsonValue.CreateStringValue("coreaudio"),
+                ["transport_key"] = JsonValue.CreateStringValue(XboxIdentity.EndpointId),
+                ["transports"] = transports,
+                ["online"] = JsonValue.CreateBooleanValue(true),
+                ["endpoint"] = endpoint
+            };
+
+            var zones = new JsonArray();
+            zones.Add(zone);
+            return new JsonObject { ["zones"] = zones };
+        }
+
         public JsonObject BuildEndpointStatus()
         {
             var p = PlaybackService.Instance.Snapshot();
@@ -212,6 +271,16 @@ namespace BrimstoneXbox.Services
                 ["muted"] = JsonValue.CreateBooleanValue(p.Muted),
                 ["queue"] = queue
             };
+        }
+
+        public void SetVolume(double percent)
+        {
+            PlaybackService.Instance.SetVolume(percent);
+        }
+
+        public void SetMuted(bool muted)
+        {
+            PlaybackService.Instance.SetMuted(muted);
         }
 
         public JsonObject BuildIngestCapabilities()
