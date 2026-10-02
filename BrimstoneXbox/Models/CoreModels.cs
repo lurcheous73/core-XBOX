@@ -1,3 +1,4 @@
+using Windows.UI.Xaml.Media.Imaging;
 using System.Collections.Generic;
 
 namespace BrimstoneXbox.Models
@@ -7,6 +8,7 @@ namespace BrimstoneXbox.Models
         public string Id { get; set; }
         public string Title { get; set; }
         public string Artist { get; set; }
+        public BitmapImage Artwork { get; set; }
         public List<CoreTrack> Tracks { get; } = new List<CoreTrack>();
         public string Meta => Tracks.Count > 0
             ? Tracks.Count + (Tracks.Count == 1 ? " track" : " tracks")
