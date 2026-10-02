@@ -35,6 +35,7 @@ namespace BrimstoneXbox
         string _sooloosZoneId = "";
         bool _serviceRefreshBusy;
         string _lastObservedRipFingerprint = "";
+        string _lastObservedBluRayManifest = "";
 
         public MainPage()
         {
@@ -795,24 +796,51 @@ namespace BrimstoneXbox
 
         async Task ObserveCompletedRipAsync()
         {
+            var changed = false;
+            var label = "New album added to Your Music";
+
             var status = await _nativeCore.GetRipStatusAsync();
-            if (!string.Equals(
+            if (string.Equals(
                 JsonString(status, "state", "idle"),
                 "complete",
                 StringComparison.OrdinalIgnoreCase))
+            {
+                var fingerprint = JsonString(status, "fingerprint", "");
+                if (!string.IsNullOrWhiteSpace(fingerprint) &&
+                    !string.Equals(
+                        fingerprint,
+                        _lastObservedRipFingerprint,
+                        StringComparison.Ordinal))
+                {
+                    _lastObservedRipFingerprint = fingerprint;
+                    changed = true;
+                }
+            }
+
+            var bluRay = await _nativeCore.GetBluRayRipStatusAsync();
+            if (string.Equals(
+                JsonString(bluRay, "state", "idle"),
+                "source_staged",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                var manifest = JsonString(bluRay, "manifest", "");
+                if (!string.IsNullOrWhiteSpace(manifest) &&
+                    !string.Equals(
+                        manifest,
+                        _lastObservedBluRayManifest,
+                        StringComparison.Ordinal))
+                {
+                    _lastObservedBluRayManifest = manifest;
+                    changed = true;
+                    label = "Blu-ray title added to Your Music";
+                }
+            }
+
+            if (!changed)
                 return;
 
-            var fingerprint = JsonString(status, "fingerprint", "");
-            if (string.IsNullOrWhiteSpace(fingerprint) ||
-                string.Equals(
-                    fingerprint,
-                    _lastObservedRipFingerprint,
-                    StringComparison.Ordinal))
-                return;
-
-            _lastObservedRipFingerprint = fingerprint;
             await LoadLibrary();
-            Toast("New album added to Your Music");
+            Toast(label);
         }
 
         async Task RefreshRipStatus()
