@@ -171,6 +171,46 @@ namespace BrimstoneXbox.Services
                 return Ok(Success());
             }
 
+            if (request.Method == "GET" &&
+                request.Path.StartsWith("/api/v1/playback/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                request.Path.EndsWith("/status",
+                    StringComparison.OrdinalIgnoreCase))
+                return Ok(_runtime.BuildEndpointStatus());
+
+            if (request.Method == "POST" &&
+                request.Path.StartsWith("/api/v1/playback/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                request.Path.EndsWith("/volume",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var volume = QueryNumber(request.Query, "volume", -1);
+                if (volume < 0 || volume > 100)
+                    throw new ArgumentException("volume must be between 0 and 100.");
+
+                _runtime.SetVolume(volume);
+                return Ok(new JsonObject
+                {
+                    ["ok"] = JsonValue.CreateBooleanValue(true),
+                    ["volume"] = JsonValue.CreateNumberValue(volume)
+                });
+            }
+
+            if (request.Method == "POST" &&
+                request.Path.StartsWith("/api/v1/playback/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                request.Path.EndsWith("/mute",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var muted = QueryBool(request.Query, "muted", false);
+                _runtime.SetMuted(muted);
+                return Ok(new JsonObject
+                {
+                    ["ok"] = JsonValue.CreateBooleanValue(true),
+                    ["muted"] = JsonValue.CreateBooleanValue(muted)
+                });
+            }
+
             if (request.Method == "POST" &&
                 request.Path.StartsWith("/api/v1/playback/",
                     StringComparison.OrdinalIgnoreCase) &&
