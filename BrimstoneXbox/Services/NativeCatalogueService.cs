@@ -12,6 +12,7 @@ namespace BrimstoneXbox.Services
     public sealed class NativeCatalogueService
     {
         readonly DiscMetadataService _metadata = new DiscMetadataService();
+        readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         public async Task<List<CoreAlbum>> GetAlbumsAsync()
         {
             var result = new List<CoreAlbum>();
@@ -83,7 +84,9 @@ namespace BrimstoneXbox.Services
                 {
                     Id = fingerprint,
                     Title = title,
-                    Artist = artist
+                    Artist = artist,
+                    AddedAt = folder.DateCreated,
+                    IsFavourite = IsFavourite(fingerprint)
                 };
 
                 try
@@ -219,6 +222,35 @@ namespace BrimstoneXbox.Services
                 // A failed diagnostic/index write must not hide playable media.
             }
         }
+
+        public bool ToggleFavourite(string albumId)
+        {
+            if (string.IsNullOrWhiteSpace(albumId))
+                return false;
+
+            var key = FavouriteKey(albumId);
+            object value;
+            var current = _settings.Values.TryGetValue(key, out value) &&
+                          value is bool &&
+                          (bool)value;
+            var next = !current;
+            _settings.Values[key] = next;
+            return next;
+        }
+
+        public bool IsFavourite(string albumId)
+        {
+            if (string.IsNullOrWhiteSpace(albumId))
+                return false;
+
+            object value;
+            return _settings.Values.TryGetValue(FavouriteKey(albumId), out value) &&
+                   value is bool &&
+                   (bool)value;
+        }
+
+        static string FavouriteKey(string albumId) =>
+            "xboxFavourite:" + albumId;
 
         public async Task<JsonObject> BuildAlbumsApiAsync()
         {
