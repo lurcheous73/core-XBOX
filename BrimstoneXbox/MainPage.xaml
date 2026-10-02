@@ -521,6 +521,18 @@
                                                TextWrapping="Wrap" Margin="0,9,0,8"/>
                                     <TextBlock x:Name="RipDetailText" Text="Music discs are identified, ripped, verified, added to Your Music and ejected automatically."
                                                FontSize="20" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" MaxWidth="770"/>
+                                    <StackPanel x:Name="BluRayOptionsPanel" Visibility="Collapsed" Margin="0,22,0,0">
+                                        <TextBlock Text="BLU-RAY TITLES" FontSize="14" FontWeight="Bold" Foreground="#B995FF"/>
+                                        <ComboBox x:Name="BluRayTitleCombo" Width="620" HorizontalAlignment="Left"
+                                                  DisplayMemberPath="Label" Margin="0,8,0,10"/>
+                                        <CheckBox x:Name="KeepBluRayVideoCheckBox"
+                                                  Content="Keep video with the lossless audio"
+                                                  IsChecked="False" FontSize="18"/>
+                                        <Button x:Name="PrepareBluRayButton"
+                                                Content="Prepare lossless MKV rip"
+                                                HorizontalAlignment="Left" Margin="0,12,0,0"
+                                                Click="PrepareBluRayButton_Click"/>
+                                    </StackPanel>
                                     <Button x:Name="RipNowButton" Content="Rip now" HorizontalAlignment="Left" Margin="0,24,0,0"
                                             Click="RipNowButton_Click" Visibility="Collapsed"/>
                                 </StackPanel>
