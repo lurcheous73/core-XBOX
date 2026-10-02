@@ -12,6 +12,7 @@ namespace BrimstoneXbox.Services
     {
         readonly OpticalProbeService _optical;
         readonly CdRipService _rip;
+        readonly BluRayAudioService _bluRay;
         readonly Dictionary<string, StackServiceState> _services =
             new Dictionary<string, StackServiceState>(StringComparer.OrdinalIgnoreCase);
 
@@ -21,10 +22,11 @@ namespace BrimstoneXbox.Services
         ThreadPoolTimer _ingestWatch;
         bool _ingestWatchBusy;
 
-        public CoreStackSupervisor(OpticalProbeService optical, CdRipService rip)
+        public CoreStackSupervisor(OpticalProbeService optical, CdRipService rip, BluRayAudioService bluRay)
         {
             _optical = optical ?? throw new ArgumentNullException(nameof(optical));
             _rip = rip ?? throw new ArgumentNullException(nameof(rip));
+            _bluRay = bluRay ?? throw new ArgumentNullException(nameof(bluRay));
 
             Add("core-postgres", "postgres:18-trixie", "", "unless-stopped");
             Add("core-cast", "core-cast:local", "", "unless-stopped");
@@ -194,11 +196,13 @@ namespace BrimstoneXbox.Services
                 {
                     Running(state,
                         "Xbox optical ingest · " + deviceCount.ToString("0") +
-                        " CD-ROM interface(s) · raw CDDA enabled · watching for discs",
+                        " CD-ROM interface(s) · CDDA + Blu-ray Audio auto-rip · watching for discs",
                         "xbox-customdevice");
 
                     if (await _rip.IsAudioDiscPresentAsync())
                         _ = _rip.AutoRipCurrentDiscAsync();
+                    else
+                        _ = _bluRay.AutoRipCurrentDiscAsync();
 
                     StartIngestWatcher();
                 }
@@ -230,14 +234,19 @@ namespace BrimstoneXbox.Services
 
         async Task CheckForDiscAsync()
         {
-            if (_ingestWatchBusy || _rip.Busy)
+            if (_ingestWatchBusy || _rip.Busy || _bluRay.Busy)
                 return;
 
             _ingestWatchBusy = true;
             try
             {
                 if (await _rip.IsAudioDiscPresentAsync())
+                {
                     await _rip.AutoRipCurrentDiscAsync();
+                    return;
+                }
+
+                await _bluRay.AutoRipCurrentDiscAsync();
             }
             catch
             {
