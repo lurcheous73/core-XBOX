@@ -32,6 +32,33 @@ namespace BrimstoneXbox.Services
         public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
         public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
         public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
+        public List<QueueItem> GetQueue() => PlaybackService.Instance.QueueSnapshot();
+
+        public void Control(string action)
+        {
+            switch ((action ?? "").ToLowerInvariant())
+            {
+                case "play":
+                case "resume":
+                    PlaybackService.Instance.Resume();
+                    break;
+                case "pause":
+                    PlaybackService.Instance.Pause();
+                    break;
+                case "stop":
+                    PlaybackService.Instance.Stop();
+                    break;
+                case "next":
+                    PlaybackService.Instance.Next();
+                    break;
+                case "previous":
+                    PlaybackService.Instance.Previous();
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        "Unsupported Xbox Core transport action: " + action);
+            }
+        }
         public JsonObject BuildStack() => _stack.Snapshot();
 
         public async Task StartAsync(string edition = "core")
