@@ -14,22 +14,12 @@ namespace BrimstoneXbox.Services
     {
         public const string Port = "8096";
 
-        readonly Func<JsonObject> _healthProvider;
-        readonly Func<JsonObject> _runtimeProvider;
-        readonly Func<JsonObject> _opticalProvider;
-        readonly Func<JsonObject> _stackProvider;
+        readonly XboxCoreRuntime _runtime;
         StreamSocketListener _listener;
 
-        public LocalCoreApiServer(
-            Func<JsonObject> healthProvider,
-            Func<JsonObject> runtimeProvider,
-            Func<JsonObject> opticalProvider,
-            Func<JsonObject> stackProvider)
+        public LocalCoreApiServer(XboxCoreRuntime runtime)
         {
-            _healthProvider = healthProvider ?? throw new ArgumentNullException(nameof(healthProvider));
-            _runtimeProvider = runtimeProvider ?? throw new ArgumentNullException(nameof(runtimeProvider));
-            _opticalProvider = opticalProvider ?? throw new ArgumentNullException(nameof(opticalProvider));
-            _stackProvider = stackProvider ?? throw new ArgumentNullException(nameof(stackProvider));
+            _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         }
 
         public string Address
@@ -37,7 +27,9 @@ namespace BrimstoneXbox.Services
             get
             {
                 var ip = XboxIdentity.LocalAddress;
-                return string.IsNullOrWhiteSpace(ip) ? null : "http://" + ip + ":" + Port;
+                return string.IsNullOrWhiteSpace(ip)
+                    ? null
+                    : "http://" + ip + ":" + Port;
             }
         }
 
@@ -55,48 +47,222 @@ namespace BrimstoneXbox.Services
                 await _listener.BindServiceNameAsync(Port);
         }
 
-        async void OnConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
+        async void OnConnectionReceived(
+            StreamSocketListener sender,
+            StreamSocketListenerConnectionReceivedEventArgs args)
         {
             using (var socket = args.Socket)
             {
                 try
                 {
                     var request = await ReadRequestAsync(socket);
-                    if (request.Method != "GET")
-                    {
-                        await WriteResponseAsync(socket, 405, Error("method not allowed").Stringify());
-                        return;
-                    }
-
-                    JsonObject body;
-                    switch (request.Path)
-                    {
-                        case "/api/v1/health":
-                            body = _healthProvider();
-                            break;
-                        case "/api/v1/runtime":
-                            body = _runtimeProvider();
-                            break;
-                        case "/api/v1/optical/probe":
-                            body = _opticalProvider();
-                            break;
-                        case "/api/v1/stack":
-                        case "/api/v1/system/stack":
-                            body = _stackProvider();
-                            break;
-                        default:
-                            await WriteResponseAsync(socket, 404, Error("not found").Stringify());
-                            return;
-                    }
-
-                    await WriteResponseAsync(socket, 200, body.Stringify());
+                    var response = await RouteAsync(request);
+                    await WriteResponseAsync(
+                        socket,
+                        response.Status,
+                        response.Body == null ? "{}" : response.Body.Stringify());
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    await SafeWriteAsync(socket, 401, Error(ex.Message));
+                }
+                catch (ArgumentException ex)
+                {
+                    await SafeWriteAsync(socket, 400, Error(ex.Message));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    await SafeWriteAsync(socket, 400, Error(ex.Message));
                 }
                 catch (Exception ex)
                 {
-                    try { await WriteResponseAsync(socket, 500, Error(ex.Message).Stringify()); }
-                    catch { }
+                    await SafeWriteAsync(socket, 500,
+                        Error(ex.GetType().Name + ": " + ex.Message));
                 }
             }
+        }
+
+        async Task<ApiResponse> RouteAsync(Request request)
+        {
+            if (request.Method == "GET" && request.Path == "/api/v1/health")
+                return Ok(_runtime.BuildHealth());
+
+            if (request.Method == "GET" && request.Path == "/api/v1/runtime")
+                return Ok(_runtime.BuildRuntime());
+
+            if (request.Method == "GET" &&
+                (request.Path == "/api/v1/stack" ||
+                 request.Path == "/api/v1/system/stack"))
+                return Ok(_runtime.BuildStack());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/optical/probe")
+                return Ok(_runtime.BuildOptical());
+
+            if (request.Method == "POST" &&
+                request.Path == "/api/v1/auth/login")
+            {
+                var body = ParseBody(request);
+                return Ok(_runtime.Login(
+                    JsonString(body, "username", "admin"),
+                    JsonString(body, "password", "")));
+            }
+
+            RequireAuthorization(request);
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/catalog/albums")
+                return Ok(await _runtime.BuildCatalogApiAsync());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/endpoints")
+                return Ok(_runtime.BuildEndpoints());
+
+            if (request.Method == "GET" &&
+                IsEndpointStatusPath(request.Path))
+                return Ok(_runtime.BuildEndpointStatus());
+
+            if (request.Method == "POST" &&
+                IsEndpointPlayPath(request.Path))
+            {
+                var body = ParseBody(request);
+                var id = (long)JsonNumber(body, "media_id", -1);
+                if (id < 0)
+                    throw new ArgumentException("media_id is required.");
+
+                await _runtime.PlayMediaIdAsync(id);
+                return Ok(Success());
+            }
+
+            if (request.Method == "POST" &&
+                IsEndpointProgrammePath(request.Path))
+            {
+                var body = ParseBody(request);
+                if (!body.ContainsKey("media_ids") ||
+                    body["media_ids"].ValueType != JsonValueType.Array)
+                    throw new ArgumentException("media_ids is required.");
+
+                var ids = new List<long>();
+                foreach (var value in body.GetNamedArray("media_ids"))
+                {
+                    if (value.ValueType == JsonValueType.Number)
+                        ids.Add((long)value.GetNumber());
+                    else if (value.ValueType == JsonValueType.String)
+                    {
+                        long parsed;
+                        if (long.TryParse(value.GetString(), out parsed))
+                            ids.Add(parsed);
+                    }
+                }
+
+                await _runtime.PlayProgrammeIdsAsync(ids);
+                return Ok(Success());
+            }
+
+            if (request.Method == "POST" &&
+                request.Path.StartsWith("/api/v1/playback/",
+                    StringComparison.OrdinalIgnoreCase) &&
+                request.Path.IndexOf("/control/",
+                    StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var marker = "/control/";
+                var index = request.Path.IndexOf(
+                    marker, StringComparison.OrdinalIgnoreCase);
+                var action = index >= 0
+                    ? request.Path.Substring(index + marker.Length)
+                    : "";
+                if (string.IsNullOrWhiteSpace(action))
+                    throw new ArgumentException("Playback action is required.");
+
+                _runtime.Control(Uri.UnescapeDataString(action));
+                return Ok(Success());
+            }
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/ingest/capabilities")
+                return Ok(_runtime.BuildIngestCapabilities());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/ingest/devices")
+                return Ok(_runtime.BuildIngestDevices());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/ingest/jobs")
+                return Ok(await _runtime.BuildIngestJobsAsync());
+
+            if (request.Method == "GET" &&
+                request.Path == "/api/v1/ingest/health")
+            {
+                return Ok(new JsonObject
+                {
+                    ["ok"] = JsonValue.CreateBooleanValue(true),
+                    ["service"] = JsonValue.CreateStringValue("surround-ingest"),
+                    ["platform"] = JsonValue.CreateStringValue("xbox-customdevice")
+                });
+            }
+
+            if (request.Method == "POST" &&
+                request.Path == "/api/v1/ingest/rip")
+            {
+                var status = await _runtime.RipNowAsync();
+                return Ok(status);
+            }
+
+            return new ApiResponse
+            {
+                Status = 404,
+                Body = Error("not found")
+            };
+        }
+
+        void RequireAuthorization(Request request)
+        {
+            string header;
+            if (!request.Headers.TryGetValue("authorization", out header))
+                throw new UnauthorizedAccessException("Bearer token required.");
+
+            const string prefix = "Bearer ";
+            if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Bearer token required.");
+
+            var token = header.Substring(prefix.Length).Trim();
+            if (!_runtime.IsAuthorized(token))
+                throw new UnauthorizedAccessException("Invalid Core token.");
+        }
+
+        static bool IsEndpointStatusPath(string path)
+        {
+            return path.StartsWith("/api/v1/endpoints/",
+                       StringComparison.OrdinalIgnoreCase) &&
+                   path.EndsWith("/status",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsEndpointPlayPath(string path)
+        {
+            return path.StartsWith("/api/v1/endpoints/",
+                       StringComparison.OrdinalIgnoreCase) &&
+                   path.EndsWith("/play",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsEndpointProgrammePath(string path)
+        {
+            return path.StartsWith("/api/v1/endpoints/",
+                       StringComparison.OrdinalIgnoreCase) &&
+                   path.EndsWith("/programme",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        static JsonObject ParseBody(Request request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Body))
+                return new JsonObject();
+
+            JsonObject body;
+            if (!JsonObject.TryParse(request.Body, out body))
+                throw new ArgumentException("Request body must be a JSON object.");
+            return body;
         }
 
         static async Task<Request> ReadRequestAsync(StreamSocket socket)
@@ -105,37 +271,212 @@ namespace BrimstoneXbox.Services
             {
                 reader.UnicodeEncoding = UnicodeEncoding.Utf8;
                 reader.InputStreamOptions = InputStreamOptions.Partial;
-                var loaded = await reader.LoadAsync(4096);
-                if (loaded == 0) throw new InvalidOperationException("Empty request.");
 
-                var raw = reader.ReadString(loaded);
-                var lineEnd = raw.IndexOf("\r\n", StringComparison.Ordinal);
-                var first = (lineEnd >= 0 ? raw.Substring(0, lineEnd) : raw).Split(' ');
-                if (first.Length < 2) throw new InvalidOperationException("Invalid request.");
+                var builder = new StringBuilder();
+                int headerEnd = -1;
+                int contentLength = 0;
+
+                for (var i = 0; i < 64; i++)
+                {
+                    var loaded = await reader.LoadAsync(4096);
+                    if (loaded == 0)
+                        break;
+
+                    builder.Append(reader.ReadString(loaded));
+                    var raw = builder.ToString();
+
+                    if (headerEnd < 0)
+                    {
+                        headerEnd = raw.IndexOf("\r\n\r\n",
+                            StringComparison.Ordinal);
+                        if (headerEnd >= 0)
+                        {
+                            var headerText = raw.Substring(0, headerEnd);
+                            contentLength = ParseContentLength(headerText);
+                        }
+                    }
+
+                    if (headerEnd >= 0)
+                    {
+                        var body = raw.Substring(headerEnd + 4);
+                        if (Encoding.UTF8.GetByteCount(body) >= contentLength)
+                            break;
+                    }
+
+                    if (builder.Length > 1024 * 1024)
+                        throw new ArgumentException("HTTP request is too large.");
+                }
+
+                var text = builder.ToString();
+                headerEnd = text.IndexOf("\r\n\r\n",
+                    StringComparison.Ordinal);
+                var headerBlock = headerEnd >= 0
+                    ? text.Substring(0, headerEnd)
+                    : text;
+                var bodyText = headerEnd >= 0
+                    ? text.Substring(headerEnd + 4)
+                    : "";
+
+                var lines = headerBlock.Split(
+                    new[] { "\r\n" },
+                    StringSplitOptions.None);
+                if (lines.Length == 0)
+                    throw new ArgumentException("Invalid HTTP request.");
+
+                var first = lines[0].Split(' ');
+                if (first.Length < 2)
+                    throw new ArgumentException("Invalid HTTP request line.");
+
+                var headers = new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+                for (var i = 1; i < lines.Length; i++)
+                {
+                    var colon = lines[i].IndexOf(':');
+                    if (colon <= 0) continue;
+                    var name = lines[i].Substring(0, colon).Trim().ToLowerInvariant();
+                    var value = lines[i].Substring(colon + 1).Trim();
+                    headers[name] = value;
+                }
+
+                var target = first[1];
+                var query = "";
+                var question = target.IndexOf('?');
+                if (question >= 0)
+                {
+                    query = target.Substring(question + 1);
+                    target = target.Substring(0, question);
+                }
 
                 return new Request
                 {
                     Method = first[0].ToUpperInvariant(),
-                    Path = first[1].Split('?')[0]
+                    Path = Uri.UnescapeDataString(target),
+                    Query = query,
+                    Headers = headers,
+                    Body = bodyText
                 };
             }
+        }
+
+        static int ParseContentLength(string headers)
+        {
+            foreach (var line in headers.Split(
+                new[] { "\r\n" },
+                StringSplitOptions.None))
+            {
+                var colon = line.IndexOf(':');
+                if (colon <= 0) continue;
+
+                var name = line.Substring(0, colon).Trim();
+                if (!name.Equals("Content-Length",
+                    StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                int length;
+                if (int.TryParse(
+                    line.Substring(colon + 1).Trim(),
+                    out length))
+                    return Math.Max(0, length);
+            }
+
+            return 0;
+        }
+
+        static JsonObject Success()
+        {
+            return new JsonObject
+            {
+                ["ok"] = JsonValue.CreateBooleanValue(true)
+            };
         }
 
         static JsonObject Error(string message)
         {
             return new JsonObject
             {
+                ["detail"] = JsonValue.CreateStringValue(message ?? "error"),
                 ["error"] = JsonValue.CreateStringValue(message ?? "error")
             };
         }
 
-        static async Task WriteResponseAsync(StreamSocket socket, int status, string body)
+        static string JsonString(
+            JsonObject obj,
+            string key,
+            string fallback = "")
+        {
+            if (obj == null ||
+                !obj.ContainsKey(key) ||
+                obj[key].ValueType != JsonValueType.String)
+                return fallback;
+
+            return obj[key].GetString();
+        }
+
+        static double JsonNumber(
+            JsonObject obj,
+            string key,
+            double fallback)
+        {
+            if (obj == null ||
+                !obj.ContainsKey(key))
+                return fallback;
+
+            var value = obj[key];
+            if (value.ValueType == JsonValueType.Number)
+                return value.GetNumber();
+
+            if (value.ValueType == JsonValueType.String)
+            {
+                double parsed;
+                if (double.TryParse(
+                    value.GetString(),
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out parsed))
+                    return parsed;
+            }
+
+            return fallback;
+        }
+
+        static ApiResponse Ok(JsonObject body)
+        {
+            return new ApiResponse
+            {
+                Status = 200,
+                Body = body ?? new JsonObject()
+            };
+        }
+
+        static async Task SafeWriteAsync(
+            StreamSocket socket,
+            int status,
+            JsonObject body)
+        {
+            try
+            {
+                await WriteResponseAsync(
+                    socket,
+                    status,
+                    (body ?? new JsonObject()).Stringify());
+            }
+            catch { }
+        }
+
+        static async Task WriteResponseAsync(
+            StreamSocket socket,
+            int status,
+            string body)
         {
             body = body ?? "{}";
             var bytes = Encoding.UTF8.GetBytes(body);
-            var reason = status == 200 ? "OK" :
-                         status == 404 ? "Not Found" :
-                         status == 405 ? "Method Not Allowed" : "Server Error";
+            var reason =
+                status == 200 ? "OK" :
+                status == 400 ? "Bad Request" :
+                status == 401 ? "Unauthorized" :
+                status == 404 ? "Not Found" :
+                status == 405 ? "Method Not Allowed" :
+                "Server Error";
 
             var header =
                 "HTTP/1.1 " + status + " " + reason + "\r\n" +
@@ -168,6 +509,15 @@ namespace BrimstoneXbox.Services
         {
             public string Method { get; set; }
             public string Path { get; set; }
+            public string Query { get; set; }
+            public Dictionary<string, string> Headers { get; set; }
+            public string Body { get; set; }
+        }
+
+        sealed class ApiResponse
+        {
+            public int Status { get; set; }
+            public JsonObject Body { get; set; }
         }
     }
 }
