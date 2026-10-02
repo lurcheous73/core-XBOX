@@ -28,7 +28,7 @@ namespace BrimstoneXbox.Services
         public bool Running { get; private set; }
         public bool Ready => Running && _stack.Ready;
         public string Edition { get; private set; } = "core";
-        public string ApiAddress => _api?.Address;
+        public string ApiAddress => _api?.FriendlyAddress ?? _api?.Address;
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
         public Task<JsonObject> GetRipStatusAsync() => _cdRip.CurrentStatusAsync();
@@ -450,6 +450,7 @@ namespace BrimstoneXbox.Services
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
                 ["version"] = JsonValue.CreateStringValue("0.2.16-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
+                ["hostname"] = JsonValue.CreateStringValue(LocalCoreApiServer.PreferredHostName),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
                 ["uptime_seconds"] = JsonValue.CreateNumberValue(
                     Math.Max(0, (DateTimeOffset.UtcNow - _startedAt).TotalSeconds)),
