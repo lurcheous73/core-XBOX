@@ -71,6 +71,7 @@
     <Compile Include="Services\EndpointServer.cs" />
     <Compile Include="Services\PlaybackService.cs" />
     <Compile Include="Services\SooloosClient.cs" />
+    <Compile Include="Services\SooloosImportService.cs" />
     <Compile Include="Services\XboxIdentity.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
