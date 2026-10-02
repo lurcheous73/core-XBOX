@@ -92,7 +92,7 @@ namespace BrimstoneXbox.Services
                 _dnssd.TextAttributes["name"] = "Xbox Core";
                 _dnssd.TextAttributes["role"] = "standalone";
                 _dnssd.TextAttributes["system_id"] = "";
-                _dnssd.TextAttributes["version"] = "0.2.19";
+                _dnssd.TextAttributes["version"] = "0.2.20";
                 _dnssd.TextAttributes["hostname"] = PreferredHostName;
                 _dnssd.TextAttributes["api_url"] = FriendlyAddress;
                 _dnssd.TextAttributes["ip_url"] = Address ?? "";
