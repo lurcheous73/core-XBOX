@@ -17,6 +17,7 @@ namespace BrimstoneXbox.Services
 
         LocalCoreApiServer _api;
         DateTimeOffset _startedAt;
+        string _apiToken;
 
         public XboxCoreRuntime()
         {
@@ -83,6 +84,7 @@ namespace BrimstoneXbox.Services
 
             _settings.Values["nativeCoreEdition"] = Edition;
             _settings.Values["nativeCoreStarted"] = _startedAt.ToString("o");
+            EnsureApiToken();
 
             _api = new LocalCoreApiServer(
                 BuildHealth,
@@ -95,6 +97,177 @@ namespace BrimstoneXbox.Services
                 () => _api.Address);
 
             Running = true;
+        }
+
+        void EnsureApiToken()
+        {
+            object saved;
+            if (_settings.Values.TryGetValue("nativeCoreApiToken", out saved))
+                _apiToken = saved as string;
+
+            if (string.IsNullOrWhiteSpace(_apiToken))
+            {
+                _apiToken = Guid.NewGuid().ToString("N") +
+                            Guid.NewGuid().ToString("N");
+                _settings.Values["nativeCoreApiToken"] = _apiToken;
+            }
+        }
+
+        public JsonObject Login(string username, string password)
+        {
+            EnsureApiToken();
+
+            object savedPassword;
+            var expectedPassword = _settings.Values.TryGetValue(
+                "nativeCoreAdminPassword", out savedPassword)
+                ? savedPassword as string
+                : null;
+
+            if (string.IsNullOrWhiteSpace(expectedPassword))
+                expectedPassword = "password";
+
+            var validUser = string.Equals(
+                string.IsNullOrWhiteSpace(username) ? "admin" : username.Trim(),
+                "admin",
+                StringComparison.OrdinalIgnoreCase);
+
+            if (!validUser || !string.Equals(password ?? "", expectedPassword, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("Invalid Core username or password.");
+
+            return new JsonObject
+            {
+                ["token"] = JsonValue.CreateStringValue(_apiToken),
+                ["username"] = JsonValue.CreateStringValue("admin"),
+                ["role"] = JsonValue.CreateStringValue("admin")
+            };
+        }
+
+        public bool IsAuthorized(string bearer)
+        {
+            EnsureApiToken();
+            return !string.IsNullOrWhiteSpace(bearer) &&
+                   string.Equals(bearer, _apiToken, StringComparison.Ordinal);
+        }
+
+        public Task<JsonObject> BuildCatalogApiAsync() =>
+            _catalogue.BuildAlbumsApiAsync();
+
+        public Task PlayMediaIdAsync(long id) =>
+            _catalogue.PlayTrackIdAsync(id);
+
+        public Task PlayProgrammeIdsAsync(System.Collections.Generic.IList<long> ids) =>
+            _catalogue.PlayProgrammeIdsAsync(ids);
+
+        public JsonObject BuildEndpoints()
+        {
+            var endpoints = new JsonArray();
+            endpoints.Add(BuildEndpoint());
+            return new JsonObject { ["endpoints"] = endpoints };
+        }
+
+        public JsonObject BuildEndpoint()
+        {
+            var p = PlaybackService.Instance.Snapshot();
+            return new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue(XboxIdentity.EndpointId),
+                ["name"] = JsonValue.CreateStringValue("Xbox"),
+                ["kind"] = JsonValue.CreateStringValue("coreaudio"),
+                ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
+                ["online"] = JsonValue.CreateBooleanValue(true),
+                ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.1"),
+                ["capabilities"] = new JsonObject
+                {
+                    ["local_playback"] = JsonValue.CreateBooleanValue(true),
+                    ["optical_rip"] = JsonValue.CreateBooleanValue(true),
+                    ["queue"] = JsonValue.CreateBooleanValue(true)
+                }
+            };
+        }
+
+        public JsonObject BuildEndpointStatus()
+        {
+            var p = PlaybackService.Instance.Snapshot();
+            var queue = new JsonArray();
+            foreach (var item in PlaybackService.Instance.QueueSnapshot())
+            {
+                queue.Add(new JsonObject
+                {
+                    ["title"] = JsonValue.CreateStringValue(item.Title ?? ""),
+                    ["artist"] = JsonValue.CreateStringValue(item.Artist ?? ""),
+                    ["album"] = JsonValue.CreateStringValue(item.Album ?? ""),
+                    ["duration"] = JsonValue.CreateNumberValue(item.DurationSeconds)
+                });
+            }
+
+            return new JsonObject
+            {
+                ["id"] = JsonValue.CreateStringValue(XboxIdentity.EndpointId),
+                ["name"] = JsonValue.CreateStringValue("Xbox"),
+                ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
+                ["playing"] = JsonValue.CreateBooleanValue(p.Playing),
+                ["title"] = JsonValue.CreateStringValue(p.Title ?? ""),
+                ["artist"] = JsonValue.CreateStringValue(p.Artist ?? ""),
+                ["album"] = JsonValue.CreateStringValue(p.Album ?? ""),
+                ["position_seconds"] = JsonValue.CreateNumberValue(p.PositionSeconds),
+                ["duration_seconds"] = JsonValue.CreateNumberValue(p.DurationSeconds),
+                ["volume"] = JsonValue.CreateNumberValue(p.Volume),
+                ["muted"] = JsonValue.CreateBooleanValue(p.Muted),
+                ["queue"] = queue
+            };
+        }
+
+        public JsonObject BuildIngestCapabilities()
+        {
+            return new JsonObject
+            {
+                ["ok"] = JsonValue.CreateBooleanValue(true),
+                ["auto_rip"] = JsonValue.CreateBooleanValue(true),
+                ["raw_cdda"] = JsonValue.CreateBooleanValue(true),
+                ["eject"] = JsonValue.CreateBooleanValue(true),
+                ["platform"] = JsonValue.CreateStringValue("xbox-customdevice")
+            };
+        }
+
+        public JsonObject BuildIngestDevices()
+        {
+            var optical = new JsonArray();
+            var probe = _optical.LastResult;
+            if (probe != null &&
+                probe.ContainsKey("devices") &&
+                probe["devices"].ValueType == JsonValueType.Array)
+            {
+                foreach (var item in probe.GetNamedArray("devices"))
+                    optical.Add(item);
+            }
+
+            return new JsonObject
+            {
+                ["optical"] = optical
+            };
+        }
+
+        public async Task<JsonObject> BuildIngestJobsAsync()
+        {
+            var jobs = new JsonArray();
+            var status = await _cdRip.CurrentStatusAsync();
+            var state = status.ContainsKey("state") &&
+                        status["state"].ValueType == JsonValueType.String
+                ? status["state"].GetString()
+                : "idle";
+
+            if (state != "idle")
+            {
+                var job = JsonObject.Parse(status.Stringify());
+                job["label"] = JsonValue.CreateStringValue("Xbox optical disc");
+                jobs.Add(job);
+            }
+
+            return new JsonObject
+            {
+                ["jobs"] = jobs
+            };
         }
 
         public JsonObject BuildHealth()
