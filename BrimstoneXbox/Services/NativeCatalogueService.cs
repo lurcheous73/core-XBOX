@@ -5,11 +5,13 @@ using System.IO;
 using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Storage;
+using Windows.UI.Xaml.Media.Imaging;
 
 namespace BrimstoneXbox.Services
 {
     public sealed class NativeCatalogueService
     {
+        readonly DiscMetadataService _metadata = new DiscMetadataService();
         public async Task<List<CoreAlbum>> GetAlbumsAsync()
         {
             var result = new List<CoreAlbum>();
@@ -60,8 +62,12 @@ namespace BrimstoneXbox.Services
                 }
                 catch
                 {
-                    // A raw rip is still a valid local album before metadata lookup.
+                    // Existing anonymous rips are upgraded in-place on the next scan.
+                    metadata = await _metadata.EnrichFromRipStatusAsync(folder, status);
                 }
+
+                if (metadata == null)
+                    metadata = await _metadata.EnrichFromRipStatusAsync(folder, status);
 
                 var fingerprint = StringValue(status, "fingerprint", folder.Name);
                 var title = metadata == null
@@ -77,6 +83,19 @@ namespace BrimstoneXbox.Services
                     Title = title,
                     Artist = artist
                 };
+
+                try
+                {
+                    await folder.GetFileAsync("cover.jpg");
+                    album.Artwork = new BitmapImage(new Uri(
+                        "ms-appdata:///local/Core/Ingest/" +
+                        folder.Name +
+                        "/cover.jpg"));
+                }
+                catch
+                {
+                    album.Artwork = null;
+                }
 
                 if (status.ContainsKey("tracks") &&
                     status["tracks"].ValueType == JsonValueType.Array)
