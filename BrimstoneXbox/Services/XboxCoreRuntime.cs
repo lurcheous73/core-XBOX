@@ -9,6 +9,7 @@ namespace BrimstoneXbox.Services
     {
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         LocalCoreApiServer _api;
+        readonly XboxOpticalProbe _optical = new XboxOpticalProbe();
         readonly OpticalProbeService _optical = new OpticalProbeService();
         readonly CdRipService _cdRip = new CdRipService();
         DateTimeOffset _startedAt;
@@ -17,6 +18,8 @@ namespace BrimstoneXbox.Services
         public bool Running { get; private set; }
         public string Edition { get; private set; } = "core";
         public string ApiAddress => _api?.Address;
+
+        public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
 
         public async Task StartAsync(string edition = "core")
         {
