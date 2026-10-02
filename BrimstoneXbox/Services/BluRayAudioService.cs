@@ -583,6 +583,46 @@ namespace BrimstoneXbox.Services
             };
         }
 
+        static async Task<bool> LooksLikeReadableM2tsAsync(StorageFile file)
+        {
+            try
+            {
+                using (var stream = await file.OpenReadAsync())
+                using (var input = stream.GetInputStreamAt(0))
+                using (var reader = new DataReader(input))
+                {
+                    var loaded = await reader.LoadAsync(5);
+                    if (loaded < 5)
+                        return false;
+
+                    var bytes = new byte[5];
+                    reader.ReadBytes(bytes);
+
+                    // Blu-ray M2TS packets carry a four-byte arrival timestamp
+                    // followed by the MPEG-TS sync byte 0x47.
+                    return bytes[4] == 0x47;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static string BuildDiscKey(
+            string label,
+            IList<PlaylistInfo> titles)
+        {
+            var first = titles == null || titles.Count == 0
+                ? null
+                : titles[0];
+
+            return (label ?? "") + "|" +
+                (titles == null ? 0 : titles.Count) + "|" +
+                (first == null ? "" : first.PlaylistId) + "|" +
+                (first == null ? 0UL : first.DurationTicks);
+        }
+
         static async Task<byte[]> ReadBytesAsync(StorageFile file)
         {
             var buffer = await FileIO.ReadBufferAsync(file);
