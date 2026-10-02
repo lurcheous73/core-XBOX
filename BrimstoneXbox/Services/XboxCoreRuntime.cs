@@ -196,7 +196,7 @@ namespace BrimstoneXbox.Services
             {
                 ["id"] = JsonValue.CreateStringValue(playback.AudioOutputId ?? ""),
                 ["name"] = JsonValue.CreateStringValue(playback.AudioOutputName ?? "Xbox system output"),
-                ["policy"] = JsonValue.CreateStringValue("hdmi-optical-auto")
+                ["policy"] = JsonValue.CreateStringValue("system-mirror-auto")
             };
         }
 
@@ -206,7 +206,7 @@ namespace BrimstoneXbox.Services
             rows.Add(new JsonObject
             {
                 ["id"] = JsonValue.CreateStringValue("auto"),
-                ["name"] = JsonValue.CreateStringValue("Automatic · HDMI then Optical"),
+                ["name"] = JsonValue.CreateStringValue("Automatic · Xbox HDMI + Optical mirror"),
                 ["preferred"] = JsonValue.CreateBooleanValue(true),
                 ["active"] = JsonValue.CreateBooleanValue(false)
             });
@@ -216,7 +216,7 @@ namespace BrimstoneXbox.Services
 
             return new JsonObject
             {
-                ["policy"] = JsonValue.CreateStringValue("hdmi-optical-auto"),
+                ["policy"] = JsonValue.CreateStringValue("system-mirror-auto"),
                 ["current"] = BuildAudioOutput(),
                 ["outputs"] = rows
             };
@@ -261,7 +261,7 @@ namespace BrimstoneXbox.Services
                 ["name"] = JsonValue.CreateStringValue(
                     playback.AudioOutputName ?? "HDMI / Optical (Xbox default)"),
                 ["default"] = JsonValue.CreateBooleanValue(true),
-                ["policy"] = JsonValue.CreateStringValue("hdmi-optical-auto")
+                ["policy"] = JsonValue.CreateStringValue("system-mirror-auto")
             });
 
             return new JsonObject
