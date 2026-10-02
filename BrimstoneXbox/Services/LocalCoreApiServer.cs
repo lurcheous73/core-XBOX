@@ -15,12 +15,17 @@ namespace BrimstoneXbox.Services
 
         readonly Func<JsonObject> _healthProvider;
         readonly Func<JsonObject> _runtimeProvider;
+        readonly Func<JsonObject> _opticalProvider;
         StreamSocketListener _listener;
 
-        public LocalCoreApiServer(Func<JsonObject> healthProvider, Func<JsonObject> runtimeProvider)
+        public LocalCoreApiServer(
+            Func<JsonObject> healthProvider,
+            Func<JsonObject> runtimeProvider,
+            Func<JsonObject> opticalProvider)
         {
             _healthProvider = healthProvider ?? throw new ArgumentNullException(nameof(healthProvider));
             _runtimeProvider = runtimeProvider ?? throw new ArgumentNullException(nameof(runtimeProvider));
+            _opticalProvider = opticalProvider ?? throw new ArgumentNullException(nameof(opticalProvider));
         }
 
         public string Address
@@ -62,6 +67,9 @@ namespace BrimstoneXbox.Services
                             break;
                         case "/api/v1/runtime":
                             body = _runtimeProvider();
+                            break;
+                        case "/api/v1/optical/probe":
+                            body = _opticalProvider();
                             break;
                         default:
                             await WriteResponseAsync(socket, 404, Error("not found").Stringify());
