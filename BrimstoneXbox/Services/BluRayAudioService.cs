@@ -108,9 +108,9 @@ namespace BrimstoneXbox.Services
                 ["disc_key"] = JsonValue.CreateStringValue(GetString(scan, "disc_key", "")),
                 ["source"] = JsonValue.CreateStringValue(GetString(scan, "source", "mounted")),
                 ["backend"] = JsonValue.CreateStringValue(
-                    nativeReadable ? "xbox-mkv-remux" : "makemkv-helper"),
+                    nativeReadable ? "xbox-mkv-remux" : "protected-disc"),
                 ["backend_state"] = JsonValue.CreateStringValue(
-                    nativeReadable ? "remux_engine_pending" : "helper_required"),
+                    nativeReadable ? "remux_engine_pending" : "protected_source_detected"),
                 ["clips"] = title.GetNamedArray("clips", new JsonArray()),
                 ["chapters"] = title.GetNamedArray("chapters", new JsonArray()),
                 ["chapter_count"] = JsonValue.CreateNumberValue(
@@ -118,13 +118,14 @@ namespace BrimstoneXbox.Services
                 ["created_utc"] = JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"))
             };
 
-            plan["helper_contract"] = new JsonObject
+            plan["protected_disc"] = new JsonObject
             {
-                ["tool"] = JsonValue.CreateStringValue("makemkvcon"),
-                ["mode"] = JsonValue.CreateStringValue("lossless-remux"),
-                ["selection"] = JsonValue.CreateStringValue("playlist"),
-                ["playlist"] = JsonValue.CreateStringValue(GetString(title, "playlist", "")),
-                ["return_container"] = JsonValue.CreateStringValue("mkv")
+                ["detected"] = JsonValue.CreateBooleanValue(protection && !decrypted),
+                ["reason"] = JsonValue.CreateStringValue(
+                    protection && !decrypted
+                        ? "AACS protection is present and Xbox UWP exposes encrypted media bytes."
+                        : ""),
+                ["native_rip_supported"] = JsonValue.CreateBooleanValue(nativeReadable)
             };
 
             await PersistAsync("bluray-rip-plan.json", plan);
@@ -151,7 +152,7 @@ namespace BrimstoneXbox.Services
             var state = GetString(result, "state", "");
 
             if (!string.IsNullOrWhiteSpace(discKey) &&
-                (state == "source_staged" || state == "helper_required"))
+                (state == "source_staged" || state == "protected"))
                 _settings.Values["blurayLastAutoRipKey"] = discKey;
 
             return result;
@@ -165,16 +166,26 @@ namespace BrimstoneXbox.Services
                 throw new InvalidOperationException("A Blu-ray rip is already running.");
 
             var plan = await CreateRipPlanAsync(playlistFile, keepVideo);
-            if (string.Equals(GetString(plan, "backend", ""), "makemkv-helper", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(
+                GetString(plan, "backend", ""),
+                "protected-disc",
+                StringComparison.OrdinalIgnoreCase))
             {
                 _lastRip = new JsonObject
                 {
-                    ["state"] = JsonValue.CreateStringValue("helper_required"),
+                    ["state"] = JsonValue.CreateStringValue("protected"),
                     ["disc_type"] = JsonValue.CreateStringValue("bluray-audio"),
-                    ["playlist"] = JsonValue.CreateStringValue(GetString(plan, "playlist", "")),
-                    ["backend"] = JsonValue.CreateStringValue("makemkv-helper"),
+                    ["disc_label"] = JsonValue.CreateStringValue(
+                        GetString(plan, "disc_label", "")),
+                    ["playlist"] = JsonValue.CreateStringValue(
+                        GetString(plan, "playlist", "")),
+                    ["playlist_id"] = JsonValue.CreateStringValue(
+                        GetString(plan, "playlist_id", "")),
+                    ["backend"] = JsonValue.CreateStringValue("protected-disc"),
+                    ["protection"] = JsonValue.CreateStringValue("AACS"),
+                    ["native_rip_supported"] = JsonValue.CreateBooleanValue(false),
                     ["error"] = JsonValue.CreateStringValue(
-                        "AACS-protected Blu-ray needs a MakeMKV-capable helper with direct access to the optical disc.")
+                        "This Blu-ray is AACS-protected. Xbox can identify titles and chapters, but cannot produce decrypted media from the UWP sandbox.")
                 };
                 await PersistAsync("bluray-rip-status.json", _lastRip);
                 var completedDiscKey = GetString(plan, "disc_key", "");
