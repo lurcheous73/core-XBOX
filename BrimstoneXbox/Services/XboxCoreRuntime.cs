@@ -29,6 +29,7 @@ namespace BrimstoneXbox.Services
         public string ApiAddress => _api?.Address;
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
+        public Task<JsonObject> GetRipStatusAsync() => _cdRip.CurrentStatusAsync();
         public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
         public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
         public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
