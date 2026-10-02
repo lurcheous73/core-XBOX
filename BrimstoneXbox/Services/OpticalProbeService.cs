@@ -36,6 +36,7 @@ namespace BrimstoneXbox.Services
             {
                 result["status"] = JsonValue.CreateStringValue("custom_device_api_unavailable");
                 _last = result;
+                await PersistAsync(result);
                 return result;
             }
 
