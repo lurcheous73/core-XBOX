@@ -15,6 +15,7 @@ namespace BrimstoneXbox.Services
     public sealed class LocalCoreApiServer : IDisposable
     {
         public const string Port = "8096";
+        public const string PreferredHostName = "xbox-core.local";
 
         readonly XboxCoreRuntime _runtime;
         StreamSocketListener _listener;
@@ -30,6 +31,9 @@ namespace BrimstoneXbox.Services
 
         public string DiscoveryInstanceName =>
             _dnssd == null ? "" : _dnssd.DnssdServiceInstanceName ?? "";
+
+        public string FriendlyAddress =>
+            "http://" + PreferredHostName + ":" + Port;
 
         public string Address
         {
@@ -62,27 +66,9 @@ namespace BrimstoneXbox.Services
         {
             try
             {
-                HostName hostName = null;
-                foreach (var host in NetworkInformation.GetHostNames())
-                {
-                    if (host.Type == HostNameType.DomainName &&
-                        host.RawName != null &&
-                        host.RawName.EndsWith(".local",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        hostName = host;
-                        break;
-                    }
-                }
-
-                if (hostName == null && !string.IsNullOrWhiteSpace(address))
-                    hostName = new HostName(address);
-
-                if (hostName == null)
-                {
-                    _discoveryStatus = "no_host";
-                    return;
-                }
+                // Xbox Core owns a stable mDNS identity independent of the
+                // console's user-visible device name.
+                HostName hostName = new HostName(PreferredHostName);
 
                 var endpointId = XboxIdentity.EndpointId ?? "xbox";
                 var cleanId = endpointId
@@ -107,7 +93,9 @@ namespace BrimstoneXbox.Services
                 _dnssd.TextAttributes["role"] = "standalone";
                 _dnssd.TextAttributes["system_id"] = "";
                 _dnssd.TextAttributes["version"] = "0.2.16";
-                _dnssd.TextAttributes["api_url"] = Address ?? "";
+                _dnssd.TextAttributes["hostname"] = PreferredHostName;
+                _dnssd.TextAttributes["api_url"] = FriendlyAddress;
+                _dnssd.TextAttributes["ip_url"] = Address ?? "";
 
                 var result =
                     await _dnssd.RegisterStreamSocketListenerAsync(_listener);
