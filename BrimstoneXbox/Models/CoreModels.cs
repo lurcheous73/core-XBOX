@@ -20,6 +20,7 @@ namespace BrimstoneXbox.Models
         public string Artist { get; set; }
         public string Album { get; set; }
         public double DurationSeconds { get; set; }
+        public string LocalPath { get; set; }
 
         public string DurationText
         {
