@@ -131,7 +131,7 @@ namespace BrimstoneXbox.Services
                 ["kind"] = JsonValue.CreateStringValue("coreaudio"),
                 ["address"] = JsonValue.CreateStringValue(address),
                 ["protocol_version"] = JsonValue.CreateNumberValue(1),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.20"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.21"),
                 ["capabilities"] = capabilities
             };
 
@@ -829,7 +829,7 @@ namespace BrimstoneXbox.Services
         {
             var request = new HttpRequestMessage(method, new Uri(BaseUrl.TrimEnd('/') + path));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Headers.UserAgent.ParseAdd("Brimstone-Xbox/0.2.20");
+            request.Headers.UserAgent.ParseAdd("Brimstone-Xbox/0.2.21");
 
             if (!string.IsNullOrWhiteSpace(bearer))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
