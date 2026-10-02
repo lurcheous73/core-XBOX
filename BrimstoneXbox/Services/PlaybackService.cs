@@ -236,9 +236,11 @@ namespace BrimstoneXbox.Services
             var file = await ResolveLocalFileAsync(relativePath);
             _playlist = null;
 
-            var item = new MediaPlaybackItem(MediaSource.CreateFromStorageFile(file));
+            var item = CreatePlaybackItem(
+                MediaSource.CreateFromStorageFile(file),
+                startSeconds,
+                durationLimitSeconds);
             ApplyMetadata(item, source);
-            ApplySegment(item, startSeconds, durationLimitSeconds);
             _player.Source = item;
             _player.Volume = Clamp(volume);
             _player.IsMuted = false;
@@ -272,18 +274,16 @@ namespace BrimstoneXbox.Services
                     continue;
 
                 var file = await ResolveLocalFileAsync(track.LocalPath);
-                var item = new MediaPlaybackItem(
-                    MediaSource.CreateFromStorageFile(file));
+                var item = CreatePlaybackItem(
+                    MediaSource.CreateFromStorageFile(file),
+                    track.StartSeconds,
+                    track.DurationLimitSeconds);
                 ApplyMetadata(item, new JsonObject
                 {
                     ["title"] = JsonValue.CreateStringValue(track.Title ?? ""),
                     ["artist"] = JsonValue.CreateStringValue(track.Artist ?? ""),
                     ["album"] = JsonValue.CreateStringValue(track.Album ?? "")
                 });
-                ApplySegment(
-                    item,
-                    track.StartSeconds,
-                    track.DurationLimitSeconds);
                 list.Items.Add(item);
             }
 
@@ -525,20 +525,24 @@ namespace BrimstoneXbox.Services
             return await StorageFile.GetFileFromPathAsync(absolute);
         }
 
-        static void ApplySegment(
-            MediaPlaybackItem item,
+        static MediaPlaybackItem CreatePlaybackItem(
+            MediaSource source,
             double startSeconds,
             double durationLimitSeconds)
         {
-            if (item == null)
-                return;
-
-            if (startSeconds > 0)
-                item.StartTime = TimeSpan.FromSeconds(startSeconds);
+            var start = TimeSpan.FromSeconds(
+                Math.Max(0, startSeconds));
 
             if (durationLimitSeconds > 0)
-                item.DurationLimit =
-                    TimeSpan.FromSeconds(durationLimitSeconds);
+                return new MediaPlaybackItem(
+                    source,
+                    start,
+                    TimeSpan.FromSeconds(durationLimitSeconds));
+
+            if (startSeconds > 0)
+                return new MediaPlaybackItem(source, start);
+
+            return new MediaPlaybackItem(source);
         }
 
         void ApplyMetadata(MediaPlaybackItem item, JsonObject source)
