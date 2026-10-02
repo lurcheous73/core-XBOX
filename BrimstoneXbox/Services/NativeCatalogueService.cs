@@ -199,6 +199,111 @@ namespace BrimstoneXbox.Services
             }
         }
 
+        public async Task<JsonObject> BuildAlbumsApiAsync()
+        {
+            var albums = await GetAlbumsAsync();
+            var rows = new JsonArray();
+
+            foreach (var album in albums)
+            {
+                var tracks = new JsonArray();
+                foreach (var track in album.Tracks)
+                {
+                    var metadata = new JsonObject
+                    {
+                        ["title"] = JsonValue.CreateStringValue(track.Title ?? ""),
+                        ["artist"] = JsonValue.CreateStringValue(track.Artist ?? ""),
+                        ["album"] = JsonValue.CreateStringValue(track.Album ?? ""),
+                        ["duration_seconds"] = JsonValue.CreateNumberValue(track.DurationSeconds)
+                    };
+
+                    tracks.Add(new JsonObject
+                    {
+                        ["id"] = JsonValue.CreateNumberValue(track.Id),
+                        ["title"] = JsonValue.CreateStringValue(track.Title ?? ""),
+                        ["artist"] = JsonValue.CreateStringValue(track.Artist ?? ""),
+                        ["duration_seconds"] = JsonValue.CreateNumberValue(track.DurationSeconds),
+                        ["metadata"] = metadata
+                    });
+                }
+
+                var edition = new JsonObject
+                {
+                    ["id"] = JsonValue.CreateStringValue((album.Id ?? "") + ":xbox"),
+                    ["title"] = JsonValue.CreateStringValue(album.Title ?? ""),
+                    ["media_type"] = JsonValue.CreateStringValue("cd"),
+                    ["source_format"] = JsonValue.CreateStringValue("wav"),
+                    ["tracks"] = tracks
+                };
+                var editions = new JsonArray();
+                editions.Add(edition);
+
+                rows.Add(new JsonObject
+                {
+                    ["id"] = JsonValue.CreateStringValue(album.Id ?? ""),
+                    ["title"] = JsonValue.CreateStringValue(album.Title ?? ""),
+                    ["artist"] = JsonValue.CreateStringValue(album.Artist ?? ""),
+                    ["editions"] = editions
+                });
+            }
+
+            return new JsonObject
+            {
+                ["albums"] = rows,
+                ["count"] = JsonValue.CreateNumberValue(rows.Count)
+            };
+        }
+
+        public async Task<CoreTrack> FindTrackAsync(long id)
+        {
+            var albums = await GetAlbumsAsync();
+            foreach (var album in albums)
+                foreach (var track in album.Tracks)
+                    if (track.Id == id)
+                        return track;
+            return null;
+        }
+
+        public async Task PlayTrackIdAsync(long id, double volume = 0.70)
+        {
+            var track = await FindTrackAsync(id);
+            if (track == null)
+                throw new InvalidOperationException("Xbox Core track was not found: " + id);
+            await PlayTrackAsync(track, volume);
+        }
+
+        public async Task PlayProgrammeIdsAsync(
+            IList<long> ids,
+            double volume = 0.70)
+        {
+            if (ids == null || ids.Count == 0)
+                throw new InvalidOperationException("No Xbox Core tracks were supplied.");
+
+            var albums = await GetAlbumsAsync();
+            var byId = new Dictionary<long, CoreTrack>();
+            foreach (var album in albums)
+                foreach (var track in album.Tracks)
+                    byId[track.Id] = track;
+
+            var paths = new List<string>();
+            var sources = new JsonArray();
+            foreach (var id in ids)
+            {
+                CoreTrack track;
+                if (!byId.TryGetValue(id, out track))
+                    continue;
+
+                paths.Add(track.LocalPath);
+                sources.Add(TrackMetadata(track));
+            }
+
+            if (paths.Count == 0)
+                throw new InvalidOperationException("None of the requested Xbox Core tracks were found.");
+
+            await PlaybackService.Instance.PlayLocalProgrammeAsync(
+                paths, sources, volume, 0);
+        }
+
         public async Task PlayTrackAsync(CoreTrack track, double volume = 0.70)
         {
             if (track == null || string.IsNullOrWhiteSpace(track.LocalPath))
