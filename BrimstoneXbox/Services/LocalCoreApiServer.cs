@@ -4,6 +4,8 @@ using System.Text;
 using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Networking;
+using Windows.Networking.Connectivity;
+using Windows.Networking.ServiceDiscovery.Dnssd;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 using UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding;
@@ -16,11 +18,18 @@ namespace BrimstoneXbox.Services
 
         readonly XboxCoreRuntime _runtime;
         StreamSocketListener _listener;
+        DnssdServiceInstance _dnssd;
+        string _discoveryStatus = "not_started";
 
         public LocalCoreApiServer(XboxCoreRuntime runtime)
         {
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         }
+
+        public string DiscoveryStatus => _discoveryStatus;
+
+        public string DiscoveryInstanceName =>
+            _dnssd == null ? "" : _dnssd.DnssdServiceInstanceName ?? "";
 
         public string Address
         {
@@ -45,6 +54,71 @@ namespace BrimstoneXbox.Services
                 await _listener.BindEndpointAsync(new HostName(address), Port);
             else
                 await _listener.BindServiceNameAsync(Port);
+
+            await RegisterDiscoveryAsync(address);
+        }
+
+        async Task RegisterDiscoveryAsync(string address)
+        {
+            try
+            {
+                HostName hostName = null;
+                foreach (var host in NetworkInformation.GetHostNames())
+                {
+                    if (host.Type == HostNameType.DomainName &&
+                        host.RawName != null &&
+                        host.RawName.EndsWith(".local",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        hostName = host;
+                        break;
+                    }
+                }
+
+                if (hostName == null && !string.IsNullOrWhiteSpace(address))
+                    hostName = new HostName(address);
+
+                if (hostName == null)
+                {
+                    _discoveryStatus = "no_host";
+                    return;
+                }
+
+                var endpointId = XboxIdentity.EndpointId ?? "xbox";
+                var cleanId = endpointId
+                    .Replace("coreaudio:", "")
+                    .Replace(":", "-");
+                var nodeId = "core-" + cleanId;
+                var suffix = nodeId.Length > 6
+                    ? nodeId.Substring(nodeId.Length - 6)
+                    : nodeId;
+
+                var instanceName =
+                    "Xbox Core (" + suffix + ")._brimstone-core._tcp.local.";
+
+                _dnssd = new DnssdServiceInstance(
+                    instanceName,
+                    hostName,
+                    UInt16.Parse(Port));
+
+                _dnssd.TextAttributes["product"] = "brimstone-core";
+                _dnssd.TextAttributes["node_id"] = nodeId;
+                _dnssd.TextAttributes["name"] = "Xbox Core";
+                _dnssd.TextAttributes["role"] = "standalone";
+                _dnssd.TextAttributes["system_id"] = "";
+                _dnssd.TextAttributes["version"] = "0.2.3";
+                _dnssd.TextAttributes["api_url"] = Address ?? "";
+
+                var result =
+                    await _dnssd.RegisterStreamSocketListenerAsync(_listener);
+                _discoveryStatus = result.Status.ToString();
+            }
+            catch (Exception ex)
+            {
+                _discoveryStatus =
+                    ex.GetType().Name + " 0x" +
+                    ex.HResult.ToString("X8") + ": " + ex.Message;
+            }
         }
 
         async void OnConnectionReceived(
