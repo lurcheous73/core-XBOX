@@ -52,91 +52,74 @@ namespace BrimstoneXbox.Services
         {
             try
             {
-                var selector = MediaDevice.GetAudioRenderSelector();
-                var devices = await DeviceInformation.FindAllAsync(selector);
-
-                DeviceInformation selected = null;
                 object savedValue;
                 var savedId = _settings.Values.TryGetValue(
                     "xboxAudioOutputId", out savedValue)
                     ? savedValue as string ?? ""
                     : "";
 
-                if (!string.IsNullOrWhiteSpace(savedId) &&
-                    !string.Equals(savedId, "auto", StringComparison.OrdinalIgnoreCase))
+                // AUTO deliberately leaves MediaPlayer on the Xbox system route.
+                // That preserves the console's own HDMI + optical mirroring where
+                // the hardware/console settings expose both outputs.
+                if (string.IsNullOrWhiteSpace(savedId) ||
+                    string.Equals(savedId, "auto", StringComparison.OrdinalIgnoreCase))
                 {
+                    try
+                    {
+                        _player.AudioDevice = null;
+                    }
+                    catch
+                    {
+                        // A fresh MediaPlayer is already on the system default route.
+                    }
+
+                    var devices = await DeviceInformation.FindAllAsync(
+                        MediaDevice.GetAudioRenderSelector());
+
+                    var hasHdmi = false;
+                    var hasOptical = false;
                     foreach (var device in devices)
                     {
-                        if (string.Equals(device.Id, savedId, StringComparison.Ordinal))
-                        {
-                            selected = device;
-                            break;
-                        }
+                        hasHdmi = hasHdmi || IsHdmi(device);
+                        hasOptical = hasOptical || IsOptical(device);
                     }
+
+                    _audioOutputId = "auto";
+                    _audioOutputName = hasOptical
+                        ? "HDMI + Optical / S/PDIF"
+                        : hasHdmi
+                            ? "HDMI"
+                            : "Xbox system audio";
+
+                    Changed();
+                    return;
                 }
 
-                if (selected == null)
+                var outputs = await DeviceInformation.FindAllAsync(
+                    MediaDevice.GetAudioRenderSelector());
+
+                foreach (var device in outputs)
                 {
-                    var defaultId = MediaDevice.GetDefaultAudioRenderId(
-                        AudioDeviceRole.Default);
-                    DeviceInformation systemDefault = null;
+                    if (!string.Equals(device.Id, savedId, StringComparison.Ordinal))
+                        continue;
 
-                    foreach (var device in devices)
-                    {
-                        if (string.Equals(device.Id, defaultId, StringComparison.Ordinal))
-                        {
-                            systemDefault = device;
-                            break;
-                        }
-                    }
-
-                    if (IsHdmiOrOptical(systemDefault))
-                        selected = systemDefault;
-
-                    if (selected == null)
-                    {
-                        foreach (var device in devices)
-                        {
-                            if (IsHdmi(device))
-                            {
-                                selected = device;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (selected == null)
-                    {
-                        foreach (var device in devices)
-                        {
-                            if (IsOptical(device))
-                            {
-                                selected = device;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (selected == null)
-                        selected = systemDefault;
+                    _player.AudioDevice = device;
+                    _audioOutputId = device.Id ?? "";
+                    _audioOutputName = FriendlyOutputName(device);
+                    Changed();
+                    return;
                 }
 
-                if (selected != null)
-                {
-                    _player.AudioDevice = selected;
-                    _audioOutputId = selected.Id ?? "";
-                    _audioOutputName = FriendlyOutputName(selected);
-                }
-                else
-                {
-                    _audioOutputId = "";
-                    _audioOutputName = "HDMI / Optical (Xbox default)";
-                }
+                // A saved device disappeared. Fall back to AUTO instead of
+                // silently routing to some unrelated endpoint.
+                _settings.Values["xboxAudioOutputId"] = "auto";
+                _audioOutputId = "auto";
+                _audioOutputName = "Xbox system audio";
             }
             catch
             {
-                _audioOutputId = "";
-                _audioOutputName = "HDMI / Optical (Xbox default)";
+                _audioOutputId = "auto";
+                _audioOutputName = "Xbox system audio";
             }
 
             Changed();
@@ -172,6 +155,8 @@ namespace BrimstoneXbox.Services
             if (string.IsNullOrWhiteSpace(deviceId) ||
                 string.Equals(deviceId, "auto", StringComparison.OrdinalIgnoreCase))
             {
+                _settings.Values["xboxAudioOutputId"] = "auto";
+                try { _player.AudioDevice = null; } catch { }
                 await InitialisePreferredOutputAsync();
                 return;
             }
