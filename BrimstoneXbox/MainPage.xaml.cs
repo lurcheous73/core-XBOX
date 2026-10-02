@@ -434,10 +434,16 @@ namespace BrimstoneXbox
                 ? "♥  Favourite"
                 : "♡  Favourite";
 
-            SendToCoreButton.Visibility = _mode == "core"
+            var directTransfer =
+                _mode == "core" &&
+                !string.Equals(
+                    _album.SourceKind,
+                    "bluray",
+                    StringComparison.OrdinalIgnoreCase);
+            SendToCoreButton.Visibility = directTransfer
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            SendToSooloosButton.Visibility = _mode == "core"
+            SendToSooloosButton.Visibility = directTransfer
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
