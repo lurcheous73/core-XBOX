@@ -48,9 +48,9 @@
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="1320">
                     <TextBlock Text="BRIMSTONE CORE" FontSize="26" FontWeight="Bold" Foreground="{StaticResource BrimstoneAccent}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="Choose how this Xbox works" FontSize="52" FontWeight="SemiBold"
+                    <TextBlock Text="Standalone Xbox Core" FontSize="52" FontWeight="SemiBold"
                                HorizontalAlignment="Center" Margin="0,14,0,10"/>
-                    <TextBlock Text="One choice. Big-screen music. You can change this later in Settings."
+                    <TextBlock Text="Local library, ripping, playback and Core API in one Xbox appliance."
                                FontSize="22" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Center"/>
                     <Grid Margin="0,54,0,0">
                         <Grid.ColumnDefinitions>
@@ -75,39 +75,16 @@
                                         <TextBlock Text="B" FontSize="44" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <StackPanel Grid.Row="1" VerticalAlignment="Center">
-                                        <TextBlock Text="CORE" FontSize="42" FontWeight="Bold"/>
+                                        <TextBlock Text="STANDALONE CORE" FontSize="42" FontWeight="Bold"/>
                                         <TextBlock Text="Full Brimstone library, queue, playback and disc ingest."
                                                    FontSize="21" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" Margin="0,8,0,0"/>
                                     </StackPanel>
-                                    <TextBlock Grid.Row="2" Text="A  Select Core" FontSize="18" Foreground="#D7C4FF"/>
+                                    <TextBlock Grid.Row="2" Text="xbox-core.local" FontSize="18" Foreground="#D7C4FF"/>
                                 </Grid>
                             </Border>
                         </Button>
 
-                        <Button x:Name="SooloosEditionButton" Grid.Column="2" Visibility="Collapsed" Click="SooloosEditionButton_Click"
-                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0"
-                                Background="Transparent" BorderThickness="0">
-                            <Border Height="310" Background="#181820" BorderBrush="#57416E" BorderThickness="2"
-                                    CornerRadius="24" Padding="34">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="*"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <Border Width="76" Height="76" CornerRadius="38" Background="#302441" BorderBrush="{StaticResource BrimstoneAccent}" BorderThickness="2"
-                                            HorizontalAlignment="Left">
-                                        <TextBlock Text="M" FontSize="38" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
-                                        <TextBlock Text="SOOLOOS" FontSize="42" FontWeight="Bold"/>
-                                        <TextBlock Text="Direct Meridian/Sooloos library, zones and transport."
-                                                   FontSize="21" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                    </StackPanel>
-                                    <TextBlock Grid.Row="2" Text="A  Select Sooloos" FontSize="18" Foreground="#D7C4FF"/>
-                                </Grid>
-                            </Border>
-                        </Button>
+                        
                     </Grid>
                 </StackPanel>
             </Grid>
@@ -149,12 +126,7 @@
                                 </Grid>
                             </StackPanel>
 
-                            <StackPanel x:Name="SooloosSetupFields" Visibility="Collapsed">
-                                <TextBlock Text="Sooloos Core address" FontSize="18" Foreground="{StaticResource BrimstoneMuted}"/>
-                                <TextBox x:Name="SooloosHostBox" PlaceholderText="10.26.30.19" Margin="0,7,0,0"/>
-                                <TextBlock Text="Use the address of the Meridian/Sooloos Core on this network."
-                                           FontSize="17" Foreground="{StaticResource BrimstoneMuted}" Margin="0,10,0,0"/>
-                            </StackPanel>
+                            
 
                             <Button x:Name="SetupConnectButton" Content="Connect" Background="{StaticResource BrimstoneAccent}"
                                     HorizontalAlignment="Left" MinWidth="220" Margin="0,28,0,0" Click="SetupConnectButton_Click"/>
@@ -417,9 +389,7 @@
                                     <Button x:Name="SendToCoreButton" Content="⇧  Send to Core"
                                             HorizontalAlignment="Left" MinWidth="180"
                                             Click="SendToCoreButton_Click"/>
-                                    <Button x:Name="SendToSooloosButton" Visibility="Collapsed" Content="⇧  Send to Sooloos"
-                                            HorizontalAlignment="Left" MinWidth="210"
-                                            Click="SendToSooloosButton_Click"/>
+                                    
                                 </StackPanel>
                             </StackPanel>
                             <ListView x:Name="TracksList" Grid.Row="2" IsItemClickEnabled="True" ItemClick="TracksList_ItemClick"
@@ -626,17 +596,7 @@
                                         </StackPanel>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Column="2" Visibility="Collapsed">
-                                        <TextBlock Text="Meridian / Sooloos" FontSize="17" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Save a Core address once; local Xbox albums can then import directly."
-                                                   FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,8"/>
-                                        <TextBox x:Name="TransferSooloosHostBox" PlaceholderText="10.26.30.19"/>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Button Content="Connect Sooloos" Click="TransferSooloosConnectButton_Click"/>
-                                            <TextBlock x:Name="TransferSooloosStatusText" VerticalAlignment="Center"
-                                                       FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="10,0,0,0"/>
-                                        </StackPanel>
-                                    </StackPanel>
+                                    
                                 </Grid>
                             </Border>
                         </Grid>
