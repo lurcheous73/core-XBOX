@@ -509,6 +509,28 @@ namespace BrimstoneXbox
             UpdatePlaybackUi();
         }
 
+        async Task ObserveCompletedRipAsync()
+        {
+            var status = await _nativeCore.GetRipStatusAsync();
+            if (!string.Equals(
+                JsonString(status, "state", "idle"),
+                "complete",
+                StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var fingerprint = JsonString(status, "fingerprint", "");
+            if (string.IsNullOrWhiteSpace(fingerprint) ||
+                string.Equals(
+                    fingerprint,
+                    _lastObservedRipFingerprint,
+                    StringComparison.Ordinal))
+                return;
+
+            _lastObservedRipFingerprint = fingerprint;
+            await LoadLibrary();
+            Toast("New album added to Your Music");
+        }
+
         async Task RefreshRipStatus()
         {
             if (_mode == "sooloos")
