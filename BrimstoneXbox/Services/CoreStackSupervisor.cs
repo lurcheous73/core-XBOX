@@ -109,7 +109,7 @@ namespace BrimstoneXbox.Services
                 await playback.InitialisePreferredOutputAsync();
                 Running(state,
                     "MediaPlayer renderer · " + playback.AudioOutputName +
-                    " · Sooloos broker available",
+                    " · standalone local playback",
                     "xbox-media-broker");
             }
             catch (Exception ex)
