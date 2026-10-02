@@ -30,6 +30,7 @@ namespace BrimstoneXbox.Services
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
         public Task<JsonObject> GetRipStatusAsync() => _cdRip.CurrentStatusAsync();
+        public Task<JsonObject> RipNowAsync() => _cdRip.AutoRipCurrentDiscAsync();
         public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
         public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
         public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
