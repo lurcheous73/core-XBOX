@@ -28,6 +28,8 @@ namespace BrimstoneXbox
         EndpointServer _server;
         SooloosClient _sooloos;
         CoreAlbum _album;
+        CoreAlbum _heroAlbum;
+        List<CoreAlbum> _albums = new List<CoreAlbum>();
         SooloosZone _currentZone;
         string _mode = "";
         string _sooloosZoneId = "";
@@ -316,7 +318,8 @@ namespace BrimstoneXbox
             {
                 if (_sooloos == null) await ConnectSooloos();
                 albums = await _sooloos.SearchAlbumsAsync();
-                LibrarySummaryText.Text = albums.Count + " albums · " + (_currentZone == null ? "Sooloos" : _currentZone.Name);
+                LibrarySummaryText.Text = albums.Count + " albums · " +
+                    (_currentZone == null ? "Sooloos" : _currentZone.Name);
             }
             else
             {
@@ -325,7 +328,95 @@ namespace BrimstoneXbox
                     (albums.Count == 1 ? " album" : " albums") +
                     " · Xbox Core";
             }
-            AlbumGrid.ItemsSource = albums;
+
+            _albums = albums ?? new List<CoreAlbum>();
+
+            var alphabetical = _albums
+                .OrderBy(a => a.Artist ?? "")
+                .ThenBy(a => a.Title ?? "")
+                .ToList();
+
+            var recent = _albums
+                .OrderByDescending(a => a.AddedAt)
+                .ThenBy(a => a.Title ?? "")
+                .ToList();
+
+            AlbumGrid.ItemsSource = alphabetical;
+            RecentlyAddedGrid.ItemsSource = recent.Take(14).ToList();
+            RecentlyRippedGrid.ItemsSource = recent.Take(10).ToList();
+
+            var favourites = _albums
+                .Where(a => a.IsFavourite)
+                .OrderBy(a => a.Artist ?? "")
+                .ThenBy(a => a.Title ?? "")
+                .ToList();
+
+            FavouritesGrid.ItemsSource = favourites;
+            FavouriteSection.Visibility = favourites.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            RefreshHomeHero();
+        }
+
+        void RefreshHomeHero()
+        {
+            if (_mode == "sooloos")
+            {
+                ContinueSection.Visibility = Visibility.Collapsed;
+                var first = _albums.FirstOrDefault();
+                SetHero(first, "YOUR MUSIC");
+                return;
+            }
+
+            var playback = PlaybackService.Instance.Snapshot();
+            CoreAlbum active = null;
+            if (!string.IsNullOrWhiteSpace(playback.Album))
+            {
+                active = _albums.FirstOrDefault(a =>
+                    string.Equals(a.Title, playback.Album,
+                        StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (active != null &&
+                !string.Equals(playback.State, "stopped",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(playback.State, "idle",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                ContinueGrid.ItemsSource = new List<CoreAlbum> { active };
+                ContinueSection.Visibility = Visibility.Visible;
+                SetHero(active, playback.Playing ? "NOW PLAYING" : "CONTINUE LISTENING");
+                HeroPlayButton.Content = playback.Playing ? "Ⅱ  Pause" : "▶  Resume";
+                return;
+            }
+
+            ContinueSection.Visibility = Visibility.Collapsed;
+            var newest = _albums
+                .OrderByDescending(a => a.AddedAt)
+                .FirstOrDefault();
+            SetHero(newest, newest == null ? "BRIMSTONE CORE" : "RECENTLY ADDED");
+            HeroPlayButton.Content = newest == null ? "▶  Play" : "▶  Play album";
+        }
+
+        void SetHero(CoreAlbum album, string eyebrow)
+        {
+            _heroAlbum = album;
+            HeroEyebrowText.Text = eyebrow ?? "BRIMSTONE CORE";
+
+            if (album == null)
+            {
+                HeroTitleText.Text = "Your Music";
+                HeroArtistText.Text = "Rip a CD or add music to get started";
+                HeroArtworkImage.Source = null;
+                HeroPlayButton.IsEnabled = false;
+                return;
+            }
+
+            HeroTitleText.Text = album.Title ?? "Untitled";
+            HeroArtistText.Text = album.Artist ?? "Unknown Artist";
+            HeroArtworkImage.Source = album.Artwork;
+            HeroPlayButton.IsEnabled = true;
         }
 
         void AlbumGrid_ItemClick(object sender, ItemClickEventArgs e)
@@ -336,6 +427,9 @@ namespace BrimstoneXbox
             AlbumTitleText.Text = _album.Title;
             AlbumArtistText.Text = _album.Artist;
             AlbumArtworkImage.Source = _album.Artwork;
+            FavouriteAlbumButton.Content = _album.IsFavourite
+                ? "♥  Favourite"
+                : "♡  Favourite";
 
             if (_mode == "core")
             {
@@ -350,6 +444,63 @@ namespace BrimstoneXbox
 
             ShowContent(AlbumPanel);
             PlayAlbumButton.Focus(FocusState.Programmatic);
+        }
+
+        async void HeroPlayButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var playback = PlaybackService.Instance.Snapshot();
+                if (_mode == "core" &&
+                    _heroAlbum != null &&
+                    string.Equals(playback.Album, _heroAlbum.Title,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(playback.State, "stopped",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(playback.State, "idle",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    await Transport(playback.Playing ? "pause" : "resume");
+                }
+                else if (_heroAlbum != null)
+                {
+                    if (_mode == "sooloos")
+                    {
+                        _album = _heroAlbum;
+                        await _sooloos.PlayAlbumAsync(_sooloosZoneId, _heroAlbum.Id);
+                    }
+                    else
+                    {
+                        await _nativeCore.PlayAlbumAsync(_heroAlbum);
+                    }
+                }
+
+                RefreshHomeHero();
+            }
+            catch (Exception ex)
+            {
+                Toast(ex.Message);
+            }
+        }
+
+        async void HeroRipButton_Click(object sender, RoutedEventArgs e)
+        {
+            ShowContent(RipPanel);
+            await RefreshRipStatus();
+        }
+
+        async void FavouriteAlbumButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_mode != "core" || _album == null)
+                return;
+
+            var favourite = _nativeCore.ToggleFavourite(_album);
+            FavouriteAlbumButton.Content = favourite
+                ? "♥  Favourite"
+                : "♡  Favourite";
+
+            await LoadLibrary();
+            Toast(favourite ? "Added to Favourites" : "Removed from Favourites");
         }
 
         async void TracksList_ItemClick(object sender, ItemClickEventArgs e)
@@ -680,6 +831,9 @@ namespace BrimstoneXbox
             {
                 OutputText.Text = PlaybackService.Instance.AudioOutputName;
                 FooterOutputText.Text = PlaybackService.Instance.AudioOutputName;
+
+                if (MusicPanel.Visibility == Visibility.Visible)
+                    RefreshHomeHero();
             }
         }
 
