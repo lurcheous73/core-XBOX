@@ -36,7 +36,10 @@ namespace BrimstoneXbox.Services
             {
                 var existing = await TryReadMetadataAsync(discFolder);
                 if (existing != null)
+                {
+                    await EnsureArtworkAsync(discFolder, existing);
                     return existing;
+                }
 
                 var first = (int)Number(ripStatus, "first_track", 1);
                 var last = (int)Number(ripStatus, "last_track", 0);
@@ -87,11 +90,7 @@ namespace BrimstoneXbox.Services
                     CreationCollisionOption.ReplaceExisting);
                 await FileIO.WriteTextAsync(metadataFile, lookup.Stringify());
 
-                var releaseId = StringValue(lookup, "release_id");
-                var hasFront = BoolValue(lookup, "front_cover");
-                if (!string.IsNullOrWhiteSpace(releaseId) && hasFront)
-                    await DownloadCoverAsync(discFolder, releaseId);
-
+                await EnsureArtworkAsync(discFolder, lookup);
                 return lookup;
             }
             catch
@@ -253,7 +252,30 @@ namespace BrimstoneXbox.Services
             };
         }
 
-        async Task DownloadCoverAsync(StorageFolder folder, string releaseId)
+        async Task EnsureArtworkAsync(
+            StorageFolder folder,
+            JsonObject metadata)
+        {
+            if (await HasCoverAsync(folder))
+                return;
+
+            var releaseId = StringValue(metadata, "release_id");
+            var hasFront = BoolValue(metadata, "front_cover");
+
+            if (hasFront &&
+                !string.IsNullOrWhiteSpace(releaseId) &&
+                await DownloadCoverArchiveAsync(folder, releaseId))
+                return;
+
+            await DownloadAppleArtworkAsync(
+                folder,
+                StringValue(metadata, "artist"),
+                StringValue(metadata, "title"));
+        }
+
+        async Task<bool> DownloadCoverArchiveAsync(
+            StorageFolder folder,
+            string releaseId)
         {
             try
             {
@@ -263,20 +285,130 @@ namespace BrimstoneXbox.Services
                     "/front-500");
 
                 if (!response.IsSuccessStatusCode)
-                    return;
+                    return false;
+
+                var mediaType = response.Content.Headers.ContentType == null
+                    ? ""
+                    : response.Content.Headers.ContentType.MediaType ?? "";
+                if (!mediaType.StartsWith("image/",
+                    StringComparison.OrdinalIgnoreCase))
+                    return false;
 
                 var bytes = await response.Content.ReadAsByteArrayAsync();
-                if (bytes == null || bytes.Length == 0)
-                    return;
+                if (bytes == null || bytes.Length < 1024)
+                    return false;
 
-                var file = await folder.CreateFileAsync(
-                    "cover.jpg",
-                    CreationCollisionOption.ReplaceExisting);
-                await FileIO.WriteBytesAsync(file, bytes);
+                await SaveCoverAsync(folder, bytes);
+                return true;
             }
             catch
             {
-                // Artwork is optional; metadata still remains useful.
+                return false;
+            }
+        }
+
+        async Task<bool> DownloadAppleArtworkAsync(
+            StorageFolder folder,
+            string artist,
+            string album)
+        {
+            if (string.IsNullOrWhiteSpace(album))
+                return false;
+
+            try
+            {
+                var term = string.Join(" ",
+                    new[] { artist, album });
+                var url =
+                    "https://itunes.apple.com/search?entity=album&limit=12&term=" +
+                    Uri.EscapeDataString(term);
+
+                var json = await _http.GetStringAsync(url);
+                JsonObject root;
+                if (!JsonObject.TryParse(json, out root) ||
+                    !root.ContainsKey("results") ||
+                    root["results"].ValueType != JsonValueType.Array)
+                    return false;
+
+                JsonObject best = null;
+                foreach (var value in root.GetNamedArray("results"))
+                {
+                    if (value.ValueType != JsonValueType.Object)
+                        continue;
+
+                    var row = value.GetObject();
+                    var collection = StringValue(row, "collectionName");
+                    var rowArtist = StringValue(row, "artistName");
+
+                    if (string.Equals(
+                            collection,
+                            album,
+                            StringComparison.OrdinalIgnoreCase) &&
+                        (string.IsNullOrWhiteSpace(artist) ||
+                         string.Equals(
+                            rowArtist,
+                            artist,
+                            StringComparison.OrdinalIgnoreCase)))
+                    {
+                        best = row;
+                        break;
+                    }
+
+                    if (best == null &&
+                        collection.IndexOf(
+                            album,
+                            StringComparison.OrdinalIgnoreCase) >= 0)
+                        best = row;
+                }
+
+                if (best == null)
+                    return false;
+
+                var artwork = StringValue(best, "artworkUrl100");
+                if (string.IsNullOrWhiteSpace(artwork))
+                    return false;
+
+                artwork = artwork
+                    .Replace("100x100bb", "600x600bb")
+                    .Replace("100x100-75", "600x600-75");
+
+                var response = await _http.GetAsync(artwork);
+                if (!response.IsSuccessStatusCode)
+                    return false;
+
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                if (bytes == null || bytes.Length < 1024)
+                    return false;
+
+                await SaveCoverAsync(folder, bytes);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static async Task SaveCoverAsync(
+            StorageFolder folder,
+            byte[] bytes)
+        {
+            var file = await folder.CreateFileAsync(
+                "cover.jpg",
+                CreationCollisionOption.ReplaceExisting);
+            await FileIO.WriteBytesAsync(file, bytes);
+        }
+
+        static async Task<bool> HasCoverAsync(StorageFolder folder)
+        {
+            try
+            {
+                var file = await folder.GetFileAsync("cover.jpg");
+                return (await file.GetBasicPropertiesAsync()).Size > 1024;
+            }
+            catch
+            {
+                return false;
             }
         }
 
