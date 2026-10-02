@@ -95,6 +95,9 @@ namespace BrimstoneXbox.Services
                 ["backend_state"] = JsonValue.CreateStringValue(
                     nativeReadable ? "remux_engine_pending" : "helper_required"),
                 ["clips"] = title.GetNamedArray("clips", new JsonArray()),
+                ["chapters"] = title.GetNamedArray("chapters", new JsonArray()),
+                ["chapter_count"] = JsonValue.CreateNumberValue(
+                    title.GetNamedArray("chapters", new JsonArray()).Count),
                 ["created_utc"] = JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"))
             };
 
@@ -501,6 +504,7 @@ namespace BrimstoneXbox.Services
                 throw new InvalidOperationException("MPLS signature is missing.");
 
             var playlistOffset = checked((int)ReadUInt32Be(bytes, 8));
+            var markOffset = checked((int)ReadUInt32Be(bytes, 12));
             if (playlistOffset < 0 || playlistOffset + 10 > bytes.Length)
                 throw new InvalidOperationException("MPLS playlist offset is invalid.");
 
@@ -535,11 +539,13 @@ namespace BrimstoneXbox.Services
                     info.DurationTicks += outTime - inTime;
                     info.Clips.Add(new ClipInfo
                     {
+                        PlayItemIndex = i,
                         Id = clipId,
                         Codec = codec,
                         StreamFile = streamFile,
                         InTime = inTime,
                         OutTime = outTime,
+                        TitleStartTicks = info.DurationTicks - (outTime - inTime),
                         StreamPresent = streamNames == null || streamNames.Count == 0
                             ? false
                             : streamNames.Contains(streamFile)
@@ -549,7 +555,133 @@ namespace BrimstoneXbox.Services
                 cursor = itemEnd;
             }
 
+            ParsePlaylistMarks(bytes, markOffset, info);
             return info;
+        }
+
+        static void ParsePlaylistMarks(
+            byte[] bytes,
+            int markOffset,
+            PlaylistInfo info)
+        {
+            if (bytes == null ||
+                info == null ||
+                markOffset <= 0 ||
+                markOffset + 6 > bytes.Length)
+                return;
+
+            var sectionLength = ReadUInt32Be(bytes, markOffset);
+            var sectionEndLong = (long)markOffset + 4L + sectionLength;
+            var sectionEnd = (int)Math.Min(
+                bytes.Length,
+                Math.Max(markOffset + 6L, sectionEndLong));
+            var markCount = ReadUInt16Be(bytes, markOffset + 4);
+            var cursor = markOffset + 6;
+
+            var marks = new List<ChapterMarkInfo>();
+            for (var markIndex = 0; markIndex < markCount; markIndex++)
+            {
+                // PlayListMark entries are fixed 14-byte records:
+                // reserved, type, PlayItem ref, 45 kHz timestamp,
+                // entry ES PID and duration.
+                if (cursor + 14 > sectionEnd)
+                    break;
+
+                var markType = bytes[cursor + 1];
+                var playItemRef = ReadUInt16Be(bytes, cursor + 2);
+                var markTime = ReadUInt32Be(bytes, cursor + 4);
+                var entryEsPid = ReadUInt16Be(bytes, cursor + 8);
+                var markDuration = ReadUInt32Be(bytes, cursor + 10);
+                cursor += 14;
+
+                // Type 1 is an EntryMark (chapter). Link marks are navigation
+                // metadata and must not become music tracks.
+                if (markType != 1)
+                    continue;
+
+                var clip = info.Clips.FirstOrDefault(
+                    item => item.PlayItemIndex == playItemRef);
+                if (clip == null)
+                    continue;
+
+                var relative = markTime > clip.InTime
+                    ? (ulong)(markTime - clip.InTime)
+                    : 0UL;
+                var clipDuration = (ulong)Math.Max(
+                    0L,
+                    (long)clip.OutTime - clip.InTime);
+                if (relative > clipDuration)
+                    relative = clipDuration;
+
+                var titleTicks = clip.TitleStartTicks + relative;
+                if (titleTicks > info.DurationTicks)
+                    titleTicks = info.DurationTicks;
+
+                marks.Add(new ChapterMarkInfo
+                {
+                    MarkIndex = markIndex,
+                    MarkType = markType,
+                    PlayItemRef = playItemRef,
+                    MarkTime = markTime,
+                    EntryEsPid = entryEsPid,
+                    MarkDuration = markDuration,
+                    TitleStartTicks = titleTicks,
+                    StreamFile = clip.StreamFile ?? ""
+                });
+            }
+
+            var ordered = marks
+                .OrderBy(mark => mark.TitleStartTicks)
+                .ThenBy(mark => mark.MarkIndex)
+                .ToList();
+
+            // Collapse duplicate entry marks at the same authored timestamp.
+            var unique = new List<ChapterMarkInfo>();
+            foreach (var mark in ordered)
+            {
+                if (unique.Count > 0 &&
+                    unique[unique.Count - 1].TitleStartTicks ==
+                        mark.TitleStartTicks)
+                    continue;
+                unique.Add(mark);
+            }
+
+            // A chapter list should cover the whole programme. Some discs
+            // omit an explicit zero mark, so synthesize only that boundary.
+            if (unique.Count == 0 ||
+                unique[0].TitleStartTicks > 0)
+            {
+                unique.Insert(0, new ChapterMarkInfo
+                {
+                    MarkIndex = -1,
+                    MarkType = 1,
+                    PlayItemRef = 0,
+                    MarkTime = info.Clips.Count > 0
+                        ? info.Clips[0].InTime
+                        : 0,
+                    EntryEsPid = 0,
+                    MarkDuration = 0,
+                    TitleStartTicks = 0,
+                    StreamFile = info.Clips.Count > 0
+                        ? info.Clips[0].StreamFile ?? ""
+                        : ""
+                });
+            }
+
+            for (var index = 0; index < unique.Count; index++)
+            {
+                var start = unique[index].TitleStartTicks;
+                var end = index + 1 < unique.Count
+                    ? unique[index + 1].TitleStartTicks
+                    : info.DurationTicks;
+
+                if (end <= start)
+                    continue;
+
+                unique[index].Number = info.Chapters.Count + 1;
+                unique[index].DurationTicks = end - start;
+                info.Chapters.Add(unique[index]);
+            }
         }
 
         static JsonObject ToJson(PlaylistInfo info, bool recommended)
@@ -570,6 +702,29 @@ namespace BrimstoneXbox.Services
                 });
             }
 
+            var chapters = new JsonArray();
+            foreach (var chapter in info.Chapters)
+            {
+                chapters.Add(new JsonObject
+                {
+                    ["number"] = JsonValue.CreateNumberValue(chapter.Number),
+                    ["mark_index"] = JsonValue.CreateNumberValue(chapter.MarkIndex),
+                    ["mark_type"] = JsonValue.CreateNumberValue(chapter.MarkType),
+                    ["play_item_ref"] = JsonValue.CreateNumberValue(chapter.PlayItemRef),
+                    ["mark_time"] = JsonValue.CreateNumberValue(chapter.MarkTime),
+                    ["entry_es_pid"] = JsonValue.CreateNumberValue(chapter.EntryEsPid),
+                    ["mark_duration"] = JsonValue.CreateNumberValue(chapter.MarkDuration),
+                    ["title_start_ticks"] = JsonValue.CreateNumberValue(chapter.TitleStartTicks),
+                    ["start_seconds"] = JsonValue.CreateNumberValue(
+                        chapter.TitleStartTicks / 45000.0),
+                    ["duration_ticks"] = JsonValue.CreateNumberValue(chapter.DurationTicks),
+                    ["duration_seconds"] = JsonValue.CreateNumberValue(
+                        chapter.DurationTicks / 45000.0),
+                    ["stream_file"] = JsonValue.CreateStringValue(
+                        chapter.StreamFile ?? "")
+                });
+            }
+
             return new JsonObject
             {
                 ["playlist"] = JsonValue.CreateStringValue(info.FileName ?? ""),
@@ -579,6 +734,8 @@ namespace BrimstoneXbox.Services
                 ["clip_count"] = JsonValue.CreateNumberValue(
                     info.Clips.Select(c => c.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count()),
                 ["recommended"] = JsonValue.CreateBooleanValue(recommended),
+                ["chapter_count"] = JsonValue.CreateNumberValue(info.Chapters.Count),
+                ["chapters"] = chapters,
                 ["clips"] = clips
             };
         }
@@ -796,6 +953,8 @@ namespace BrimstoneXbox.Services
             public string PlaylistId;
             public ulong DurationTicks;
             public readonly List<ClipInfo> Clips = new List<ClipInfo>();
+            public readonly List<ChapterMarkInfo> Chapters =
+                new List<ChapterMarkInfo>();
 
             public string Signature()
             {
@@ -805,13 +964,29 @@ namespace BrimstoneXbox.Services
             }
         }
 
+        sealed class ChapterMarkInfo
+        {
+            public int Number;
+            public int MarkIndex;
+            public byte MarkType;
+            public ushort PlayItemRef;
+            public uint MarkTime;
+            public ushort EntryEsPid;
+            public uint MarkDuration;
+            public ulong TitleStartTicks;
+            public ulong DurationTicks;
+            public string StreamFile;
+        }
+
         sealed class ClipInfo
         {
+            public int PlayItemIndex;
             public string Id;
             public string Codec;
             public string StreamFile;
             public uint InTime;
             public uint OutTime;
+            public ulong TitleStartTicks;
             public bool StreamPresent;
         }
     }
