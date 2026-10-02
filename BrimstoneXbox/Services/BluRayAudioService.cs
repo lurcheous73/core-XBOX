@@ -1,0 +1,496 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Windows.Data.Json;
+using Windows.Storage;
+using Windows.Storage.Streams;
+
+namespace BrimstoneXbox.Services
+{
+    public sealed class BluRayAudioService
+    {
+        JsonObject _lastScan = State("not_run");
+
+        public JsonObject LastScan => _lastScan;
+
+        public async Task<JsonObject> ScanAsync()
+        {
+            var removable = KnownFolders.RemovableDevices;
+            var volumes = await removable.GetFoldersAsync();
+
+            foreach (var volume in volumes)
+            {
+                var scan = await ScanVolumeAsync(volume);
+                if (GetBool(scan, "available"))
+                {
+                    _lastScan = scan;
+                    await PersistAsync("bluray-scan.json", scan);
+                    return scan;
+                }
+            }
+
+            _lastScan = new JsonObject
+            {
+                ["state"] = JsonValue.CreateStringValue("no_bluray"),
+                ["available"] = JsonValue.CreateBooleanValue(false),
+                ["disc_type"] = JsonValue.CreateStringValue(""),
+                ["title_count"] = JsonValue.CreateNumberValue(0),
+                ["titles"] = new JsonArray()
+            };
+            await PersistAsync("bluray-scan.json", _lastScan);
+            return _lastScan;
+        }
+
+        public async Task<JsonObject> CreateRipPlanAsync(
+            string playlistFile,
+            bool keepVideo)
+        {
+            var scan = await ScanAsync();
+            if (!GetBool(scan, "available"))
+                throw new InvalidOperationException("No readable Blu-ray BDMV volume is available.");
+
+            if (string.IsNullOrWhiteSpace(playlistFile))
+            {
+                var recommended = FindRecommended(scan);
+                playlistFile = recommended == null
+                    ? ""
+                    : GetString(recommended, "playlist", "");
+            }
+
+            var title = FindTitle(scan, playlistFile);
+            if (title == null)
+                throw new ArgumentException("The requested Blu-ray playlist was not found.");
+
+            var protection = GetBool(scan, "protection_detected");
+            var readable = GetBool(scan, "streams_readable");
+
+            var plan = new JsonObject
+            {
+                ["state"] = JsonValue.CreateStringValue("ready"),
+                ["disc_type"] = JsonValue.CreateStringValue("bluray-audio"),
+                ["disc_label"] = JsonValue.CreateStringValue(GetString(scan, "disc_label", "")),
+                ["playlist"] = JsonValue.CreateStringValue(GetString(title, "playlist", "")),
+                ["playlist_id"] = JsonValue.CreateStringValue(GetString(title, "playlist_id", "")),
+                ["duration_seconds"] = JsonValue.CreateNumberValue(GetNumber(title, "duration_seconds", 0)),
+                ["output_container"] = JsonValue.CreateStringValue("mkv"),
+                ["audio_policy"] = JsonValue.CreateStringValue("copy"),
+                ["video_policy"] = JsonValue.CreateStringValue(keepVideo ? "copy" : "discard"),
+                ["keep_video"] = JsonValue.CreateBooleanValue(keepVideo),
+                ["preserve_chapters"] = JsonValue.CreateBooleanValue(true),
+                ["protection_detected"] = JsonValue.CreateBooleanValue(protection),
+                ["streams_readable"] = JsonValue.CreateBooleanValue(readable),
+                ["backend"] = JsonValue.CreateStringValue(
+                    protection || !readable ? "makemkv-helper" : "xbox-mkv-remux"),
+                ["backend_state"] = JsonValue.CreateStringValue(
+                    protection || !readable ? "helper_required" : "remux_engine_pending"),
+                ["clips"] = title.GetNamedArray("clips", new JsonArray()),
+                ["created_utc"] = JsonValue.CreateStringValue(DateTimeOffset.UtcNow.ToString("o"))
+            };
+
+            plan["helper_contract"] = new JsonObject
+            {
+                ["tool"] = JsonValue.CreateStringValue("makemkvcon"),
+                ["mode"] = JsonValue.CreateStringValue("lossless-remux"),
+                ["selection"] = JsonValue.CreateStringValue("playlist"),
+                ["playlist"] = JsonValue.CreateStringValue(GetString(title, "playlist", "")),
+                ["return_container"] = JsonValue.CreateStringValue("mkv")
+            };
+
+            await PersistAsync("bluray-rip-plan.json", plan);
+            return plan;
+        }
+
+        async Task<JsonObject> ScanVolumeAsync(StorageFolder volume)
+        {
+            StorageFolder bdmv;
+            try
+            {
+                bdmv = await volume.GetFolderAsync("BDMV");
+            }
+            catch
+            {
+                return State("not_bluray");
+            }
+
+            StorageFolder playlistFolder;
+            StorageFolder streamFolder;
+            try
+            {
+                playlistFolder = await bdmv.GetFolderAsync("PLAYLIST");
+                streamFolder = await bdmv.GetFolderAsync("STREAM");
+            }
+            catch (Exception ex)
+            {
+                return new JsonObject
+                {
+                    ["state"] = JsonValue.CreateStringValue("bdmv_incomplete"),
+                    ["available"] = JsonValue.CreateBooleanValue(false),
+                    ["disc_label"] = JsonValue.CreateStringValue(volume.Name ?? ""),
+                    ["error"] = JsonValue.CreateStringValue(Describe(ex))
+                };
+            }
+
+            var protection = await HasFolderAsync(volume, "AACS");
+            var streamNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var streamsReadable = true;
+
+            try
+            {
+                var streamFiles = await streamFolder.GetFilesAsync();
+                foreach (var file in streamFiles)
+                    streamNames.Add(file.Name ?? "");
+            }
+            catch
+            {
+                streamsReadable = false;
+            }
+
+            var playlistFiles = await playlistFolder.GetFilesAsync();
+            var parsed = new List<PlaylistInfo>();
+            var parseErrors = new JsonArray();
+
+            foreach (var file in playlistFiles
+                .Where(f => string.Equals(
+                    System.IO.Path.GetExtension(f.Name),
+                    ".mpls",
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f.Name))
+            {
+                try
+                {
+                    var bytes = await ReadBytesAsync(file);
+                    var info = ParsePlaylist(file.Name, bytes, streamNames);
+                    if (info.Clips.Count > 0 && info.DurationTicks > 0)
+                        parsed.Add(info);
+                }
+                catch (Exception ex)
+                {
+                    parseErrors.Add(new JsonObject
+                    {
+                        ["playlist"] = JsonValue.CreateStringValue(file.Name ?? ""),
+                        ["error"] = JsonValue.CreateStringValue(Describe(ex))
+                    });
+                }
+            }
+
+            var ordered = parsed
+                .OrderByDescending(p => p.DurationTicks)
+                .ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var unique = new List<PlaylistInfo>();
+            var duplicateCount = 0;
+
+            foreach (var item in ordered)
+            {
+                var signature = item.Signature();
+                if (!seen.Add(signature))
+                {
+                    duplicateCount++;
+                    continue;
+                }
+                unique.Add(item);
+            }
+
+            var titles = new JsonArray();
+            for (var i = 0; i < unique.Count; i++)
+                titles.Add(ToJson(unique[i], i == 0));
+
+            return new JsonObject
+            {
+                ["state"] = JsonValue.CreateStringValue("ready"),
+                ["available"] = JsonValue.CreateBooleanValue(true),
+                ["disc_type"] = JsonValue.CreateStringValue("bluray"),
+                ["disc_label"] = JsonValue.CreateStringValue(volume.Name ?? ""),
+                ["protection_detected"] = JsonValue.CreateBooleanValue(protection),
+                ["streams_readable"] = JsonValue.CreateBooleanValue(streamsReadable),
+                ["title_count"] = JsonValue.CreateNumberValue(unique.Count),
+                ["duplicate_playlists_filtered"] = JsonValue.CreateNumberValue(duplicateCount),
+                ["titles"] = titles,
+                ["parse_errors"] = parseErrors
+            };
+        }
+
+        static PlaylistInfo ParsePlaylist(
+            string fileName,
+            byte[] bytes,
+            HashSet<string> streamNames)
+        {
+            if (bytes == null || bytes.Length < 20)
+                throw new InvalidOperationException("MPLS file is too short.");
+
+            if (!string.Equals(ReadAscii(bytes, 0, 4), "MPLS", StringComparison.Ordinal))
+                throw new InvalidOperationException("MPLS signature is missing.");
+
+            var playlistOffset = checked((int)ReadUInt32Be(bytes, 8));
+            if (playlistOffset < 0 || playlistOffset + 10 > bytes.Length)
+                throw new InvalidOperationException("MPLS playlist offset is invalid.");
+
+            var playItemCount = ReadUInt16Be(bytes, playlistOffset + 6);
+            var cursor = playlistOffset + 10;
+            var info = new PlaylistInfo
+            {
+                FileName = fileName ?? "",
+                PlaylistId = System.IO.Path.GetFileNameWithoutExtension(fileName ?? "")
+            };
+
+            for (var i = 0; i < playItemCount; i++)
+            {
+                if (cursor + 2 > bytes.Length)
+                    throw new InvalidOperationException("MPLS play-item table is truncated.");
+
+                var itemLength = ReadUInt16Be(bytes, cursor);
+                var itemStart = cursor + 2;
+                var itemEnd = itemStart + itemLength;
+
+                if (itemLength < 20 || itemEnd > bytes.Length)
+                    throw new InvalidOperationException("MPLS play item is invalid.");
+
+                var clipId = ReadAscii(bytes, itemStart, 5);
+                var codec = ReadAscii(bytes, itemStart + 5, 4);
+                var inTime = ReadUInt32Be(bytes, itemStart + 12);
+                var outTime = ReadUInt32Be(bytes, itemStart + 16);
+
+                if (!string.IsNullOrWhiteSpace(clipId) && outTime >= inTime)
+                {
+                    var streamFile = clipId + ".m2ts";
+                    info.DurationTicks += outTime - inTime;
+                    info.Clips.Add(new ClipInfo
+                    {
+                        Id = clipId,
+                        Codec = codec,
+                        StreamFile = streamFile,
+                        InTime = inTime,
+                        OutTime = outTime,
+                        StreamPresent = streamNames == null || streamNames.Count == 0
+                            ? false
+                            : streamNames.Contains(streamFile)
+                    });
+                }
+
+                cursor = itemEnd;
+            }
+
+            return info;
+        }
+
+        static JsonObject ToJson(PlaylistInfo info, bool recommended)
+        {
+            var clips = new JsonArray();
+            foreach (var clip in info.Clips)
+            {
+                clips.Add(new JsonObject
+                {
+                    ["clip_id"] = JsonValue.CreateStringValue(clip.Id ?? ""),
+                    ["codec_id"] = JsonValue.CreateStringValue(clip.Codec ?? ""),
+                    ["stream_file"] = JsonValue.CreateStringValue(clip.StreamFile ?? ""),
+                    ["stream_present"] = JsonValue.CreateBooleanValue(clip.StreamPresent),
+                    ["in_time"] = JsonValue.CreateNumberValue(clip.InTime),
+                    ["out_time"] = JsonValue.CreateNumberValue(clip.OutTime),
+                    ["duration_seconds"] = JsonValue.CreateNumberValue(
+                        Math.Max(0, clip.OutTime - clip.InTime) / 45000.0)
+                });
+            }
+
+            return new JsonObject
+            {
+                ["playlist"] = JsonValue.CreateStringValue(info.FileName ?? ""),
+                ["playlist_id"] = JsonValue.CreateStringValue(info.PlaylistId ?? ""),
+                ["duration_seconds"] = JsonValue.CreateNumberValue(info.DurationTicks / 45000.0),
+                ["play_item_count"] = JsonValue.CreateNumberValue(info.Clips.Count),
+                ["clip_count"] = JsonValue.CreateNumberValue(
+                    info.Clips.Select(c => c.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count()),
+                ["recommended"] = JsonValue.CreateBooleanValue(recommended),
+                ["clips"] = clips
+            };
+        }
+
+        static async Task<byte[]> ReadBytesAsync(StorageFile file)
+        {
+            var buffer = await FileIO.ReadBufferAsync(file);
+            using (var reader = DataReader.FromBuffer(buffer))
+            {
+                var bytes = new byte[buffer.Length];
+                reader.ReadBytes(bytes);
+                return bytes;
+            }
+        }
+
+        static async Task<bool> HasFolderAsync(StorageFolder root, string name)
+        {
+            try
+            {
+                await root.GetFolderAsync(name);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static JsonObject FindRecommended(JsonObject scan)
+        {
+            if (scan == null ||
+                !scan.ContainsKey("titles") ||
+                scan["titles"].ValueType != JsonValueType.Array)
+                return null;
+
+            foreach (var value in scan.GetNamedArray("titles"))
+            {
+                if (value.ValueType != JsonValueType.Object)
+                    continue;
+                var title = value.GetObject();
+                if (GetBool(title, "recommended"))
+                    return title;
+            }
+
+            return scan.GetNamedArray("titles").Count > 0 &&
+                   scan.GetNamedArray("titles")[0].ValueType == JsonValueType.Object
+                ? scan.GetNamedArray("titles")[0].GetObject()
+                : null;
+        }
+
+        static JsonObject FindTitle(JsonObject scan, string playlist)
+        {
+            if (scan == null ||
+                !scan.ContainsKey("titles") ||
+                scan["titles"].ValueType != JsonValueType.Array)
+                return null;
+
+            var requested = playlist ?? "";
+            foreach (var value in scan.GetNamedArray("titles"))
+            {
+                if (value.ValueType != JsonValueType.Object)
+                    continue;
+
+                var title = value.GetObject();
+                if (string.Equals(
+                        GetString(title, "playlist", ""),
+                        requested,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(
+                        GetString(title, "playlist_id", ""),
+                        System.IO.Path.GetFileNameWithoutExtension(requested),
+                        StringComparison.OrdinalIgnoreCase))
+                    return title;
+            }
+            return null;
+        }
+
+        static ushort ReadUInt16Be(byte[] data, int offset)
+        {
+            Require(data, offset, 2);
+            return (ushort)((data[offset] << 8) | data[offset + 1]);
+        }
+
+        static uint ReadUInt32Be(byte[] data, int offset)
+        {
+            Require(data, offset, 4);
+            return ((uint)data[offset] << 24) |
+                   ((uint)data[offset + 1] << 16) |
+                   ((uint)data[offset + 2] << 8) |
+                   data[offset + 3];
+        }
+
+        static string ReadAscii(byte[] data, int offset, int count)
+        {
+            Require(data, offset, count);
+            return Encoding.ASCII.GetString(data, offset, count).Trim('\0', ' ');
+        }
+
+        static void Require(byte[] data, int offset, int count)
+        {
+            if (data == null || offset < 0 || count < 0 || offset + count > data.Length)
+                throw new InvalidOperationException("MPLS structure is truncated.");
+        }
+
+        static async Task PersistAsync(string name, JsonObject value)
+        {
+            try
+            {
+                var root = ApplicationData.Current.LocalFolder;
+                var core = await root.CreateFolderAsync(
+                    "Core", CreationCollisionOption.OpenIfExists);
+                var ingest = await core.CreateFolderAsync(
+                    "Ingest", CreationCollisionOption.OpenIfExists);
+                var file = await ingest.CreateFileAsync(
+                    name, CreationCollisionOption.ReplaceExisting);
+                await FileIO.WriteTextAsync(file, value.Stringify());
+            }
+            catch
+            {
+                // A diagnostic/plan write must not make optical scanning fail.
+            }
+        }
+
+        static JsonObject State(string state)
+        {
+            return new JsonObject
+            {
+                ["state"] = JsonValue.CreateStringValue(state ?? ""),
+                ["available"] = JsonValue.CreateBooleanValue(false)
+            };
+        }
+
+        static string GetString(JsonObject obj, string key, string fallback)
+        {
+            return obj != null &&
+                   obj.ContainsKey(key) &&
+                   obj[key].ValueType == JsonValueType.String
+                ? obj[key].GetString()
+                : fallback;
+        }
+
+        static double GetNumber(JsonObject obj, string key, double fallback)
+        {
+            return obj != null &&
+                   obj.ContainsKey(key) &&
+                   obj[key].ValueType == JsonValueType.Number
+                ? obj[key].GetNumber()
+                : fallback;
+        }
+
+        static bool GetBool(JsonObject obj, string key)
+        {
+            return obj != null &&
+                   obj.ContainsKey(key) &&
+                   obj[key].ValueType == JsonValueType.Boolean &&
+                   obj[key].GetBoolean();
+        }
+
+        static string Describe(Exception ex)
+        {
+            return ex.GetType().Name + " 0x" + ex.HResult.ToString("X8") +
+                   ": " + ex.Message;
+        }
+
+        sealed class PlaylistInfo
+        {
+            public string FileName;
+            public string PlaylistId;
+            public ulong DurationTicks;
+            public readonly List<ClipInfo> Clips = new List<ClipInfo>();
+
+            public string Signature()
+            {
+                return DurationTicks + "|" +
+                    string.Join(",", Clips.Select(c =>
+                        c.Id + ":" + c.InTime + ":" + c.OutTime));
+            }
+        }
+
+        sealed class ClipInfo
+        {
+            public string Id;
+            public string Codec;
+            public string StreamFile;
+            public uint InTime;
+            public uint OutTime;
+            public bool StreamPresent;
+        }
+    }
+}
