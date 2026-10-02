@@ -385,6 +385,146 @@ namespace BrimstoneXbox.Services
             };
         }
 
+        public async Task<JsonObject> ImportStagedBluRayAsync(
+            JsonObject ripStatus)
+        {
+            RequireUserToken();
+            if (ripStatus == null ||
+                !string.Equals(
+                    StringValue(ripStatus, "state", ""),
+                    "source_staged",
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "No staged Xbox Blu-ray title is ready to send.");
+
+            var manifestRelative = StringValue(ripStatus, "manifest", "");
+            if (string.IsNullOrWhiteSpace(manifestRelative))
+                throw new InvalidOperationException(
+                    "The staged Blu-ray rip has no title manifest.");
+
+            var root = ApplicationData.Current.LocalFolder;
+            var manifestPath = System.IO.Path.Combine(
+                root.Path,
+                manifestRelative.Replace('/', System.IO.Path.DirectorySeparatorChar));
+            var manifestFile = await StorageFile.GetFileFromPathAsync(manifestPath);
+            var manifestText = await FileIO.ReadTextAsync(manifestFile);
+
+            JsonObject manifest;
+            if (!JsonObject.TryParse(manifestText, out manifest))
+                throw new InvalidOperationException(
+                    "The staged Blu-ray title manifest is invalid.");
+
+            var sourceFolderRelative = StringValue(
+                manifest,
+                "source_folder",
+                "");
+            if (string.IsNullOrWhiteSpace(sourceFolderRelative))
+                throw new InvalidOperationException(
+                    "The Blu-ray title manifest has no staged source folder.");
+
+            var sourceFolderPath = System.IO.Path.Combine(
+                root.Path,
+                sourceFolderRelative.Replace(
+                    '/',
+                    System.IO.Path.DirectorySeparatorChar));
+            var sourceFolder =
+                await StorageFolder.GetFolderFromPathAsync(sourceFolderPath);
+
+            if (!manifest.ContainsKey("staged_files") ||
+                manifest["staged_files"].ValueType != JsonValueType.Array)
+                throw new InvalidOperationException(
+                    "The Blu-ray title manifest has no staged files.");
+
+            using (var multipart = new MultipartFormDataContent())
+            {
+                var manifestContent = new StringContent(
+                    manifest.Stringify(),
+                    Encoding.UTF8,
+                    "application/json");
+                multipart.Add(manifestContent, "manifest");
+
+                var added = 0;
+                foreach (var value in manifest.GetNamedArray("staged_files"))
+                {
+                    if (value.ValueType != JsonValueType.Object)
+                        continue;
+
+                    var row = value.GetObject();
+                    var sourceName = StringValue(row, "source", "");
+                    var storedName = StringValue(row, "file", "");
+                    if (string.IsNullOrWhiteSpace(sourceName) ||
+                        string.IsNullOrWhiteSpace(storedName))
+                        continue;
+
+                    var file = await sourceFolder.GetFileAsync(storedName);
+                    var content = await StorageFileHttpContent.CreateAsync(file);
+                    content.Headers.ContentType =
+                        new MediaTypeHeaderValue("video/mp2t");
+                    multipart.Add(content, "files", sourceName);
+                    added++;
+                }
+
+                if (added == 0)
+                    throw new InvalidOperationException(
+                        "No staged Blu-ray source clips were available.");
+
+                var ingestBase = BuildIngestBaseUrl(BaseUrl);
+                using (var request = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    new Uri(ingestBase + "/api/v1/ingest/bluray-programme")))
+                using (var client = new HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromHours(4);
+                    request.Headers.Accept.Add(
+                        new MediaTypeWithQualityHeaderValue("application/json"));
+                    request.Headers.Authorization =
+                        new AuthenticationHeaderValue("Bearer", UserToken);
+                    request.Content = multipart;
+
+                    var response = await client.SendAsync(request);
+                    var body = await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var message = "Core Blu-ray ingest failed (" +
+                            (int)response.StatusCode + ").";
+                        try
+                        {
+                            var error = JsonObject.Parse(body);
+                            message = StringValue(
+                                error,
+                                "detail",
+                                StringValue(error, "error", message));
+                        }
+                        catch { }
+                        throw new InvalidOperationException(message);
+                    }
+
+                    var parsed = JsonObject.Parse(
+                        string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                    if (!parsed.ContainsKey("ok") ||
+                        parsed["ok"].ValueType != JsonValueType.Boolean ||
+                        !parsed["ok"].GetBoolean())
+                        throw new InvalidOperationException(
+                            "Core did not confirm the Blu-ray ingest.");
+
+                    return parsed;
+                }
+            }
+        }
+
+        static string BuildIngestBaseUrl(string coreBaseUrl)
+        {
+            var core = new Uri(coreBaseUrl);
+            var builder = new UriBuilder(core)
+            {
+                Port = 8082,
+                Path = "",
+                Query = "",
+                Fragment = ""
+            };
+            return builder.Uri.ToString().TrimEnd('/');
+        }
+
         static async Task<string> Sha256Async(StorageFile file)
         {
             var provider =
