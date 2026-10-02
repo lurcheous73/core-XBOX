@@ -256,6 +256,77 @@ namespace BrimstoneXbox.Services
                 UserToken);
         }
 
+        public async Task<List<QueueItem>> GetQueueAsync(string endpointId)
+        {
+            RequireUserToken();
+            var json = await SendAsync(
+                HttpMethod.Get,
+                "/api/v1/endpoints/" + Uri.EscapeDataString(endpointId) + "/status",
+                null,
+                UserToken);
+            var root = JsonObject.Parse(json);
+            var result = new List<QueueItem>();
+            if (!root.ContainsKey("queue") || root["queue"].ValueType != JsonValueType.Array)
+                return result;
+
+            var index = 1;
+            foreach (var value in root.GetNamedArray("queue"))
+            {
+                if (value.ValueType != JsonValueType.Object) continue;
+                var item = value.GetObject();
+                result.Add(new QueueItem
+                {
+                    Number = index++.ToString(),
+                    Title = StringValue(item, "title", "Track"),
+                    Artist = StringValue(item, "artist"),
+                    Album = StringValue(item, "album"),
+                    DurationSeconds = NumberValue(item, "duration", 0)
+                });
+            }
+            return result;
+        }
+
+        public async Task<IngestSummary> GetIngestSummaryAsync()
+        {
+            RequireUserToken();
+            var summary = new IngestSummary();
+
+            var capabilities = JsonObject.Parse(await SendAsync(
+                HttpMethod.Get, "/api/v1/ingest/capabilities", null, UserToken));
+            if (capabilities.ContainsKey("auto_rip") &&
+                capabilities["auto_rip"].ValueType == JsonValueType.Boolean)
+                summary.AutoRip = capabilities["auto_rip"].GetBoolean();
+
+            var devices = JsonObject.Parse(await SendAsync(
+                HttpMethod.Get, "/api/v1/ingest/devices", null, UserToken));
+            if (devices.ContainsKey("optical") && devices["optical"].ValueType == JsonValueType.Array)
+                summary.OpticalDrives = devices.GetNamedArray("optical").Count;
+
+            var jobs = JsonObject.Parse(await SendAsync(
+                HttpMethod.Get, "/api/v1/ingest/jobs", null, UserToken));
+            if (jobs.ContainsKey("jobs") && jobs["jobs"].ValueType == JsonValueType.Array)
+            {
+                foreach (var value in jobs.GetNamedArray("jobs"))
+                {
+                    if (value.ValueType != JsonValueType.Object) continue;
+                    var job = value.GetObject();
+                    var state = StringValue(job, "state",
+                        StringValue(job, "status", ""));
+                    if (state.Equals("queued", StringComparison.OrdinalIgnoreCase) ||
+                        state.Equals("processing", StringComparison.OrdinalIgnoreCase) ||
+                        state.Equals("running", StringComparison.OrdinalIgnoreCase) ||
+                        state.Equals("ripping", StringComparison.OrdinalIgnoreCase))
+                    {
+                        summary.ActiveJobs++;
+                        if (string.IsNullOrWhiteSpace(summary.CurrentJob))
+                            summary.CurrentJob = StringValue(job, "label",
+                                StringValue(job, "title", "Music disc"));
+                    }
+                }
+            }
+            return summary;
+        }
+
         public void Forget()
         {
             BaseUrl = string.Empty;
