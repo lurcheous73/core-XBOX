@@ -883,12 +883,13 @@ namespace BrimstoneXbox
                     return;
                 }
 
-                if (bluRayState == "helper_required")
+                if (bluRayState == "protected")
                 {
                     RipModeText.Text = "BLU-RAY AUDIO";
-                    RipStatusText.Text = "MakeMKV helper required";
+                    RipStatusText.Text = "Protected Blu-ray detected";
                     RipDetailText.Text =
-                        "Xbox can see the title but not a decrypted media stream. The helper contract is saved for a MakeMKV-capable Core.";
+                        "Xbox has identified the disc, playlists and chapters, but this title is AACS-protected and the Xbox UWP sandbox does not expose decrypted media for ripping.";
+                    BluRayOptionsPanel.Visibility = Visibility.Visible;
                 }
 
                 var status = await _nativeCore.GetRipStatusAsync();
@@ -962,7 +963,7 @@ namespace BrimstoneXbox
                         " · " + options.Count +
                         (options.Count == 1 ? " title" : " titles");
                     RipDetailText.Text = JsonBool(bluRay, "protection_detected")
-                        ? "Playlist structure found. Lossless audio will use the MakeMKV helper path where the Xbox sandbox cannot read protected streams."
+                        ? "Playlist structure found. This disc is AACS-protected, so Xbox can inspect titles and chapters but cannot produce a decrypted rip from the UWP sandbox."
                         : "Choose a title. Audio is preserved bit-for-bit into MKV; video stays off unless you tick Keep video.";
                     return;
                 }
@@ -1059,14 +1060,14 @@ namespace BrimstoneXbox
                     KeepBluRayVideoCheckBox.IsChecked == true);
 
                 var state = JsonString(result, "state", "");
-                RipStatusText.Text = state == "helper_required"
-                    ? "MakeMKV helper required"
+                RipStatusText.Text = state == "protected"
+                    ? "Protected Blu-ray detected"
                     : "Blu-ray rip started";
-                RipDetailText.Text = state == "helper_required"
-                    ? "Xbox cannot read the decrypted media payload for this disc; the helper request has been saved."
+                RipDetailText.Text = state == "protected"
+                    ? "Xbox can read the Blu-ray structure but AACS prevents a decrypted media rip inside the Xbox sandbox."
                     : "The selected title is being copied losslessly into local Core staging.";
-                Toast(state == "helper_required"
-                    ? "MakeMKV helper required"
+                Toast(state == "protected"
+                    ? "Protected Blu-ray detected"
                     : "Blu-ray rip started");
             }
             catch (Exception ex)
