@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Windows.Data.Json;
+using Windows.Devices.Enumeration;
+using Windows.Media.Devices;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage;
@@ -18,13 +20,19 @@ namespace BrimstoneXbox.Services
         public static PlaybackService Instance => Lazy.Value;
 
         readonly MediaPlayer _player;
+        readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         MediaPlaybackList _playlist;
         string _title = "";
         string _artist = "";
         string _album = "";
+        string _audioOutputName = "Xbox system output";
+        string _audioOutputId = "";
         bool _stopped;
 
         public event EventHandler StateChanged;
+
+        public string AudioOutputName => _audioOutputName;
+        public string AudioOutputId => _audioOutputId;
 
         PlaybackService()
         {
@@ -38,6 +46,182 @@ namespace BrimstoneXbox.Services
             _player.PlaybackSession.PlaybackStateChanged += (s,e) => Changed();
             _player.MediaEnded += (s,e) => { _stopped = true; Changed(); };
             _player.MediaFailed += (s,e) => Changed();
+        }
+
+        public async Task InitialisePreferredOutputAsync()
+        {
+            try
+            {
+                var selector = MediaDevice.GetAudioRenderSelector();
+                var devices = await DeviceInformation.FindAllAsync(selector);
+
+                DeviceInformation selected = null;
+                object savedValue;
+                var savedId = _settings.Values.TryGetValue(
+                    "xboxAudioOutputId", out savedValue)
+                    ? savedValue as string ?? ""
+                    : "";
+
+                if (!string.IsNullOrWhiteSpace(savedId) &&
+                    !string.Equals(savedId, "auto", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var device in devices)
+                    {
+                        if (string.Equals(device.Id, savedId, StringComparison.Ordinal))
+                        {
+                            selected = device;
+                            break;
+                        }
+                    }
+                }
+
+                if (selected == null)
+                {
+                    var defaultId = MediaDevice.GetDefaultAudioRenderId(
+                        AudioDeviceRole.Default);
+                    DeviceInformation systemDefault = null;
+
+                    foreach (var device in devices)
+                    {
+                        if (string.Equals(device.Id, defaultId, StringComparison.Ordinal))
+                        {
+                            systemDefault = device;
+                            break;
+                        }
+                    }
+
+                    if (IsHdmiOrOptical(systemDefault))
+                        selected = systemDefault;
+
+                    if (selected == null)
+                    {
+                        foreach (var device in devices)
+                        {
+                            if (IsHdmi(device))
+                            {
+                                selected = device;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (selected == null)
+                    {
+                        foreach (var device in devices)
+                        {
+                            if (IsOptical(device))
+                            {
+                                selected = device;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (selected == null)
+                        selected = systemDefault;
+                }
+
+                if (selected != null)
+                {
+                    _player.AudioDevice = selected;
+                    _audioOutputId = selected.Id ?? "";
+                    _audioOutputName = FriendlyOutputName(selected);
+                }
+                else
+                {
+                    _audioOutputId = "";
+                    _audioOutputName = "HDMI / Optical (Xbox default)";
+                }
+            }
+            catch
+            {
+                _audioOutputId = "";
+                _audioOutputName = "HDMI / Optical (Xbox default)";
+            }
+
+            Changed();
+        }
+
+        public async Task<List<JsonObject>> GetAudioOutputsAsync()
+        {
+            var result = new List<JsonObject>();
+            var devices = await DeviceInformation.FindAllAsync(
+                MediaDevice.GetAudioRenderSelector());
+
+            foreach (var device in devices)
+            {
+                result.Add(new JsonObject
+                {
+                    ["id"] = JsonValue.CreateStringValue(device.Id ?? ""),
+                    ["name"] = JsonValue.CreateStringValue(device.Name ?? ""),
+                    ["preferred"] = JsonValue.CreateBooleanValue(
+                        IsHdmi(device) || IsOptical(device)),
+                    ["active"] = JsonValue.CreateBooleanValue(
+                        string.Equals(device.Id, _audioOutputId, StringComparison.Ordinal))
+                });
+            }
+
+            return result;
+        }
+
+        public async Task SetAudioOutputAsync(string deviceId)
+        {
+            _settings.Values["xboxAudioOutputId"] =
+                string.IsNullOrWhiteSpace(deviceId) ? "auto" : deviceId;
+
+            if (string.IsNullOrWhiteSpace(deviceId) ||
+                string.Equals(deviceId, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                await InitialisePreferredOutputAsync();
+                return;
+            }
+
+            var devices = await DeviceInformation.FindAllAsync(
+                MediaDevice.GetAudioRenderSelector());
+            foreach (var device in devices)
+            {
+                if (!string.Equals(device.Id, deviceId, StringComparison.Ordinal))
+                    continue;
+
+                _player.AudioDevice = device;
+                _audioOutputId = device.Id ?? "";
+                _audioOutputName = FriendlyOutputName(device);
+                Changed();
+                return;
+            }
+
+            throw new InvalidOperationException("Requested Xbox audio output is not available.");
+        }
+
+        static bool IsHdmiOrOptical(DeviceInformation device) =>
+            IsHdmi(device) || IsOptical(device);
+
+        static bool IsHdmi(DeviceInformation device)
+        {
+            if (device == null) return false;
+            var value = ((device.Name ?? "") + " " + (device.Id ?? "")).ToLowerInvariant();
+            return value.Contains("hdmi");
+        }
+
+        static bool IsOptical(DeviceInformation device)
+        {
+            if (device == null) return false;
+            var value = ((device.Name ?? "") + " " + (device.Id ?? "")).ToLowerInvariant();
+            return value.Contains("optical") ||
+                   value.Contains("spdif") ||
+                   value.Contains("s/pdif") ||
+                   value.Contains("toslink");
+        }
+
+        static string FriendlyOutputName(DeviceInformation device)
+        {
+            if (IsHdmi(device))
+                return "HDMI";
+            if (IsOptical(device))
+                return "Optical / S/PDIF";
+            return string.IsNullOrWhiteSpace(device?.Name)
+                ? "Xbox system output"
+                : device.Name;
         }
 
         public void PlayUrl(string url, JsonObject source, double volume, double positionSeconds)
