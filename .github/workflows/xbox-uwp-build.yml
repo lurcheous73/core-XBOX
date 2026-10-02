@@ -1,0 +1,25 @@
+name: Xbox UWP Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore
+        run: msbuild BrimstoneXbox.sln /t:Restore /p:Configuration=Release /p:Platform=x64
+
+      - name: Build Xbox package
+        run: msbuild BrimstoneXbox.sln /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false
