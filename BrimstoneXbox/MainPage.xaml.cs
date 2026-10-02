@@ -18,6 +18,7 @@ namespace BrimstoneXbox
         const string SooloosHostSetting = "sooloosHost";
 
         readonly CoreClient _core = new CoreClient();
+        readonly XboxCoreRuntime _nativeCore = new XboxCoreRuntime();
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         readonly DispatcherTimer _heartbeat = new DispatcherTimer();
         readonly DispatcherTimer _uiRefresh = new DispatcherTimer();
@@ -77,6 +78,7 @@ namespace BrimstoneXbox
 
             if (_mode == "core")
             {
+                await _nativeCore.StartAsync("core");
                 if (!_core.HasSavedLogin)
                 {
                     ShowSetup();
@@ -160,6 +162,8 @@ namespace BrimstoneXbox
             {
                 if (_mode == "core")
                 {
+                    SetupStatusText.Text = "Starting Xbox Core…";
+                    await _nativeCore.StartAsync("core");
                     SetupStatusText.Text = "Signing in…";
                     await _core.LoginAsync(CoreUrlBox.Text, UsernameBox.Text, PasswordBox.Password);
                     SetupStatusText.Text = "Pairing Xbox…";
@@ -608,7 +612,10 @@ namespace BrimstoneXbox
             SettingsEditionText.Text = _mode == "sooloos" ? "Sooloos" : "Core";
             SettingsCoreText.Text = _mode == "sooloos"
                 ? (string.IsNullOrWhiteSpace(ReadSetting(SooloosHostSetting)) ? "Sooloos not configured" : ReadSetting(SooloosHostSetting))
-                : (string.IsNullOrWhiteSpace(_core.BaseUrl) ? "Core not configured" : _core.BaseUrl);
+                : (_nativeCore.Running
+                    ? "Xbox Core · " + (_nativeCore.ApiAddress ?? "local API starting") +
+                      (string.IsNullOrWhiteSpace(_core.BaseUrl) ? "" : "\nLibrary bridge · " + _core.BaseUrl)
+                    : (string.IsNullOrWhiteSpace(_core.BaseUrl) ? "Core not configured" : _core.BaseUrl));
             SettingsEndpointText.Text = _mode == "sooloos"
                 ? (_currentZone == null ? "No Sooloos zone" : _currentZone.Name)
                 : XboxIdentity.EndpointId;
