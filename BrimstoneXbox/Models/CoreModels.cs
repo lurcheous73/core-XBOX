@@ -9,6 +9,8 @@ namespace BrimstoneXbox.Models
         public string Title { get; set; }
         public string Artist { get; set; }
         public BitmapImage Artwork { get; set; }
+        public System.DateTimeOffset AddedAt { get; set; }
+        public bool IsFavourite { get; set; }
         public List<CoreTrack> Tracks { get; } = new List<CoreTrack>();
         public string Meta => Tracks.Count > 0
             ? Tracks.Count + (Tracks.Count == 1 ? " track" : " tracks")
