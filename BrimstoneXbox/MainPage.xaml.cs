@@ -32,6 +32,7 @@ namespace BrimstoneXbox
         string _mode = "";
         string _sooloosZoneId = "";
         bool _serviceRefreshBusy;
+        string _lastObservedRipFingerprint = "";
 
         public MainPage()
         {
@@ -294,6 +295,8 @@ namespace BrimstoneXbox
                         await RefreshQueue();
                     if (RipPanel.Visibility == Visibility.Visible)
                         await RefreshRipStatus();
+
+                    await ObserveCompletedRipAsync();
                 }
             }
             catch
