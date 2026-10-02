@@ -86,11 +86,7 @@ namespace BrimstoneXbox.Services
             _settings.Values["nativeCoreStarted"] = _startedAt.ToString("o");
             EnsureApiToken();
 
-            _api = new LocalCoreApiServer(
-                BuildHealth,
-                BuildRuntime,
-                BuildOptical,
-                BuildStack);
+            _api = new LocalCoreApiServer(this);
 
             await _stack.StartAsync(
                 () => _api.StartAsync(),
@@ -176,7 +172,7 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.1"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.2"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
@@ -278,7 +274,7 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.0-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.2-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
                 ["uptime_seconds"] = JsonValue.CreateNumberValue(
