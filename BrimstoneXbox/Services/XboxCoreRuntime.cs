@@ -10,6 +10,7 @@ namespace BrimstoneXbox.Services
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         LocalCoreApiServer _api;
         readonly OpticalProbeService _optical = new OpticalProbeService();
+        readonly CdRipService _cdRip = new CdRipService();
         DateTimeOffset _startedAt;
         string _apiError = "";
 
@@ -40,6 +41,10 @@ namespace BrimstoneXbox.Services
             // Optical probing is local to the sandbox and must not depend on Xbox
             // permitting inbound LAN sockets into the AppContainer.
             await _optical.ProbeAsync();
+
+            // Hardware-validation proof: do not block the couch UI while a whole
+            // audio track is read. The service persists its own progress/result.
+            _ = _cdRip.RipFirstTrackProofAsync();
 
             _api = new LocalCoreApiServer(BuildHealth, BuildRuntime, BuildOptical);
             try
