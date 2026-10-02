@@ -1,3 +1,5 @@
+using BrimstoneXbox.Models;
+using System.Collections.Generic;
 using System;
 using System.Threading.Tasks;
 using Windows.Data.Json;
@@ -10,6 +12,7 @@ namespace BrimstoneXbox.Services
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         readonly OpticalProbeService _optical = new OpticalProbeService();
         readonly CdRipService _cdRip = new CdRipService();
+        readonly NativeCatalogueService _catalogue = new NativeCatalogueService();
         readonly CoreStackSupervisor _stack;
 
         LocalCoreApiServer _api;
@@ -26,6 +29,9 @@ namespace BrimstoneXbox.Services
         public string ApiAddress => _api?.Address;
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
+        public Task<List<CoreAlbum>> GetAlbumsAsync() => _catalogue.GetAlbumsAsync();
+        public Task PlayTrackAsync(CoreTrack track) => _catalogue.PlayTrackAsync(track);
+        public Task PlayAlbumAsync(CoreAlbum album) => _catalogue.PlayAlbumAsync(album);
         public JsonObject BuildStack() => _stack.Snapshot();
 
         public async Task StartAsync(string edition = "core")
