@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.Data.Json;
+using Windows.Networking;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 using UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding;
@@ -46,7 +47,12 @@ namespace BrimstoneXbox.Services
 
             _listener = new StreamSocketListener();
             _listener.ConnectionReceived += OnConnectionReceived;
-            await _listener.BindServiceNameAsync(Port);
+
+            var address = XboxIdentity.LocalAddress;
+            if (!string.IsNullOrWhiteSpace(address))
+                await _listener.BindEndpointAsync(new HostName(address), Port);
+            else
+                await _listener.BindServiceNameAsync(Port);
         }
 
         async void OnConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
