@@ -227,7 +227,7 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.2"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.3"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
@@ -368,12 +368,18 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.2-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.3-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
                 ["uptime_seconds"] = JsonValue.CreateNumberValue(
                     Math.Max(0, (DateTimeOffset.UtcNow - _startedAt).TotalSeconds)),
-                ["stack"] = _stack.Snapshot()
+                ["stack"] = _stack.Snapshot(),
+                ["discovery"] = new JsonObject
+                {
+                    ["service_type"] = JsonValue.CreateStringValue("_brimstone-core._tcp.local."),
+                    ["status"] = JsonValue.CreateStringValue(_api == null ? "not_started" : _api.DiscoveryStatus),
+                    ["instance"] = JsonValue.CreateStringValue(_api == null ? "" : _api.DiscoveryInstanceName)
+                }
             };
         }
 
