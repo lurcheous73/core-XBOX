@@ -26,6 +26,36 @@ namespace BrimstoneXbox.Services
 
         bool _busy;
 
+        public bool Busy => _busy;
+
+        public async Task<bool> IsAudioDiscPresentAsync()
+        {
+            if (_busy)
+                return false;
+
+            try
+            {
+                var selector = CustomDevice.GetDeviceSelector(CdromInterfaceGuid);
+                var devices = await DeviceInformation.FindAllAsync(selector);
+                if (devices.Count == 0)
+                    return false;
+
+                var device = await CustomDevice.FromIdAsync(
+                    devices[0].Id,
+                    DeviceAccessMode.Read,
+                    DeviceSharingMode.Shared);
+                if (device == null)
+                    return false;
+
+                var toc = await ReadTocAsync(device);
+                return toc.Tracks.Any(t => t.Audio);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public async Task<JsonObject> CurrentStatusAsync()
         {
             try
