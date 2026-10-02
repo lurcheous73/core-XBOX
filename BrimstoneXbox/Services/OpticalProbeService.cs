@@ -110,8 +110,117 @@ namespace BrimstoneXbox.Services
                 result["error"] = JsonValue.CreateStringValue(Describe(ex));
             }
 
+            try
+            {
+                result["mounted_media"] = await ProbeMountedMediaAsync();
+            }
+            catch (Exception ex)
+            {
+                result["mounted_media"] = new JsonObject
+                {
+                    ["available"] = JsonValue.CreateBooleanValue(false),
+                    ["error"] = JsonValue.CreateStringValue(Describe(ex))
+                };
+            }
+
             _last = result;
             await PersistAsync(result);
+            return result;
+        }
+
+        async Task<JsonObject> ProbeMountedMediaAsync()
+        {
+            var result = new JsonObject();
+            var volumes = new JsonArray();
+            result["volumes"] = volumes;
+
+            var removable = KnownFolders.RemovableDevices;
+            var folders = await removable.GetFoldersAsync();
+
+            foreach (var folder in folders)
+            {
+                var row = new JsonObject
+                {
+                    ["name"] = JsonValue.CreateStringValue(folder.Name ?? ""),
+                    ["path"] = JsonValue.CreateStringValue(folder.Path ?? "")
+                };
+
+                var topFolders = new JsonArray();
+                row["folders"] = topFolders;
+
+                try
+                {
+                    var children = await folder.GetFoldersAsync();
+                    foreach (var child in children)
+                        topFolders.Add(JsonValue.CreateStringValue(child.Name ?? ""));
+                }
+                catch (Exception ex)
+                {
+                    row["folder_error"] = JsonValue.CreateStringValue(Describe(ex));
+                }
+
+                row["audio_ts"] = await ProbeFolderAsync(folder, "AUDIO_TS",
+                    new[] { ".aob", ".ifo", ".bup" });
+                row["video_ts"] = await ProbeFolderAsync(folder, "VIDEO_TS",
+                    new[] { ".vob", ".ifo", ".bup" });
+                row["bdmv"] = await ProbeFolderAsync(folder, "BDMV",
+                    new[] { ".m2ts", ".mpls", ".clpi" });
+
+                volumes.Add(row);
+            }
+
+            result["available"] = JsonValue.CreateBooleanValue(folders.Count > 0);
+            result["volume_count"] = JsonValue.CreateNumberValue(folders.Count);
+            return result;
+        }
+
+        static async Task<JsonObject> ProbeFolderAsync(
+            StorageFolder root,
+            string name,
+            string[] extensions)
+        {
+            var result = new JsonObject
+            {
+                ["present"] = JsonValue.CreateBooleanValue(false),
+                ["file_count"] = JsonValue.CreateNumberValue(0)
+            };
+
+            try
+            {
+                var folder = await root.GetFolderAsync(name);
+                result["present"] = JsonValue.CreateBooleanValue(true);
+
+                var files = new JsonArray();
+                long totalBytes = 0;
+
+                var all = await folder.GetFilesAsync();
+                foreach (var file in all)
+                {
+                    var extension = System.IO.Path.GetExtension(file.Name ?? "")
+                        .ToLowerInvariant();
+                    if (extensions != null &&
+                        extensions.Length > 0 &&
+                        Array.IndexOf(extensions, extension) < 0)
+                        continue;
+
+                    var props = await file.GetBasicPropertiesAsync();
+                    totalBytes += (long)props.Size;
+                    files.Add(new JsonObject
+                    {
+                        ["name"] = JsonValue.CreateStringValue(file.Name ?? ""),
+                        ["bytes"] = JsonValue.CreateNumberValue(props.Size)
+                    });
+                }
+
+                result["files"] = files;
+                result["file_count"] = JsonValue.CreateNumberValue(files.Count);
+                result["bytes"] = JsonValue.CreateNumberValue(totalBytes);
+            }
+            catch
+            {
+                // Folder absence is a normal media-type discriminator.
+            }
+
             return result;
         }
 
