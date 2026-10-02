@@ -286,7 +286,7 @@ namespace BrimstoneXbox.Services
                 ["address"] = JsonValue.CreateStringValue(ApiAddress ?? ""),
                 ["online"] = JsonValue.CreateBooleanValue(true),
                 ["state"] = JsonValue.CreateStringValue(p.State ?? "idle"),
-                ["software_version"] = JsonValue.CreateStringValue("0.2.16"),
+                ["software_version"] = JsonValue.CreateStringValue("0.2.17"),
                 ["capabilities"] = new JsonObject
                 {
                     ["local_playback"] = JsonValue.CreateBooleanValue(true),
@@ -448,7 +448,7 @@ namespace BrimstoneXbox.Services
                 ["ready"] = JsonValue.CreateBooleanValue(Ready),
                 ["service"] = JsonValue.CreateStringValue("Core"),
                 ["release"] = JsonValue.CreateStringValue("Beta 1"),
-                ["version"] = JsonValue.CreateStringValue("0.2.16-xbox-native"),
+                ["version"] = JsonValue.CreateStringValue("0.2.17-xbox-native"),
                 ["platform"] = JsonValue.CreateStringValue("xbox-appcontainer"),
                 ["hostname"] = JsonValue.CreateStringValue(LocalCoreApiServer.PreferredHostName),
                 ["edition"] = JsonValue.CreateStringValue(Edition ?? "core"),
