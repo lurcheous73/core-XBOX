@@ -229,17 +229,81 @@ namespace BrimstoneXbox.Services
             string relativePath,
             JsonObject source,
             double volume,
-            double positionSeconds)
+            double positionSeconds,
+            double startSeconds = 0,
+            double durationLimitSeconds = 0)
         {
             var file = await ResolveLocalFileAsync(relativePath);
             _playlist = null;
 
             var item = new MediaPlaybackItem(MediaSource.CreateFromStorageFile(file));
             ApplyMetadata(item, source);
+            ApplySegment(item, startSeconds, durationLimitSeconds);
             _player.Source = item;
             _player.Volume = Clamp(volume);
             _player.IsMuted = false;
             _player.Play();
+
+            if (positionSeconds > 0)
+            {
+                try
+                {
+                    _player.PlaybackSession.Position =
+                        TimeSpan.FromSeconds(positionSeconds);
+                }
+                catch { }
+            }
+
+            Changed();
+        }
+
+        public async Task PlayLocalProgrammeAsync(
+            IList<CoreTrack> tracks,
+            double volume,
+            double positionSeconds)
+        {
+            if (tracks == null || tracks.Count == 0)
+                throw new ArgumentException("At least one local track is required.");
+
+            var list = new MediaPlaybackList();
+            foreach (var track in tracks)
+            {
+                if (track == null || string.IsNullOrWhiteSpace(track.LocalPath))
+                    continue;
+
+                var file = await ResolveLocalFileAsync(track.LocalPath);
+                var item = new MediaPlaybackItem(
+                    MediaSource.CreateFromStorageFile(file));
+                ApplyMetadata(item, new JsonObject
+                {
+                    ["title"] = JsonValue.CreateStringValue(track.Title ?? ""),
+                    ["artist"] = JsonValue.CreateStringValue(track.Artist ?? ""),
+                    ["album"] = JsonValue.CreateStringValue(track.Album ?? "")
+                });
+                ApplySegment(
+                    item,
+                    track.StartSeconds,
+                    track.DurationLimitSeconds);
+                list.Items.Add(item);
+            }
+
+            if (list.Items.Count == 0)
+                throw new InvalidOperationException(
+                    "No readable Xbox-local tracks were found.");
+
+            list.CurrentItemChanged += (s, e) =>
+            {
+                UpdateCurrentMetadata();
+                Changed();
+            };
+
+            _playlist = list;
+            _player.Source = list;
+            _stopped = false;
+            _player.Volume = Clamp(volume);
+            _player.IsMuted = false;
+            _player.Play();
+            UpdateCurrentMetadata();
 
             if (positionSeconds > 0)
             {
@@ -459,6 +523,22 @@ namespace BrimstoneXbox.Services
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
 
             return await StorageFile.GetFileFromPathAsync(absolute);
+        }
+
+        static void ApplySegment(
+            MediaPlaybackItem item,
+            double startSeconds,
+            double durationLimitSeconds)
+        {
+            if (item == null)
+                return;
+
+            if (startSeconds > 0)
+                item.StartTime = TimeSpan.FromSeconds(startSeconds);
+
+            if (durationLimitSeconds > 0)
+                item.DurationLimit =
+                    TimeSpan.FromSeconds(durationLimitSeconds);
         }
 
         void ApplyMetadata(MediaPlaybackItem item, JsonObject source)
