@@ -11,6 +11,7 @@ namespace BrimstoneXbox.Services
         LocalCoreApiServer _api;
         readonly OpticalProbeService _optical = new OpticalProbeService();
         DateTimeOffset _startedAt;
+        string _apiError = "";
 
         public bool Running { get; private set; }
         public string Edition { get; private set; } = "core";
@@ -34,14 +35,22 @@ namespace BrimstoneXbox.Services
             _settings.Values["nativeCoreEdition"] = Edition;
             _settings.Values["nativeCoreStarted"] = _startedAt.ToString("o");
 
-            _api = new LocalCoreApiServer(BuildHealth, BuildRuntime, BuildOptical);
-            await _api.StartAsync();
-
             Running = true;
 
-            // Probe only after the Core API is listening so diagnostics remain reachable
-            // even if Xbox blocks raw optical access.
+            // Optical probing is local to the sandbox and must not depend on Xbox
+            // permitting inbound LAN sockets into the AppContainer.
             await _optical.ProbeAsync();
+
+            _api = new LocalCoreApiServer(BuildHealth, BuildRuntime, BuildOptical);
+            try
+            {
+                await _api.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                _apiError = ex.GetType().Name + " 0x" +
+                    ex.HResult.ToString("X8") + ": " + ex.Message;
+            }
         }
 
         public JsonObject BuildHealth()
@@ -64,7 +73,10 @@ namespace BrimstoneXbox.Services
         {
             var modules = new JsonArray();
             modules.Add(Module("authority", true, "Native Xbox Core authority scaffold"));
-            modules.Add(Module("api", _api != null, _api?.Address ?? "stopped"));
+            modules.Add(Module("api", string.IsNullOrWhiteSpace(_apiError),
+                string.IsNullOrWhiteSpace(_apiError)
+                    ? (_api?.Address ?? "started")
+                    : "LAN listener unavailable: " + _apiError));
             modules.Add(Module("storage", true, "ApplicationData/LocalFolder/Core"));
             modules.Add(Module("catalogue", false, "SQLite catalogue migration pending"));
             modules.Add(Module("queue", true, "Playback queue engine available"));
