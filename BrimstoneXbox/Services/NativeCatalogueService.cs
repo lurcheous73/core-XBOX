@@ -66,8 +66,10 @@ namespace BrimstoneXbox.Services
                     metadata = await _metadata.EnrichFromRipStatusAsync(folder, status);
                 }
 
-                if (metadata == null)
-                    metadata = await _metadata.EnrichFromRipStatusAsync(folder, status);
+                var enrichedMetadata =
+                    await _metadata.EnrichFromRipStatusAsync(folder, status);
+                if (enrichedMetadata != null)
+                    metadata = enrichedMetadata;
 
                 var fingerprint = StringValue(status, "fingerprint", folder.Name);
                 var title = metadata == null
