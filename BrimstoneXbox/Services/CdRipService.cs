@@ -26,6 +26,24 @@ namespace BrimstoneXbox.Services
 
         bool _busy;
 
+        public async Task<JsonObject> CurrentStatusAsync()
+        {
+            try
+            {
+                var ingest = await GetIngestFolderAsync();
+                var file = await ingest.GetFileAsync("auto-rip.json");
+                var text = await FileIO.ReadTextAsync(file);
+                JsonObject status;
+                return JsonObject.TryParse(text, out status)
+                    ? status
+                    : State("idle");
+            }
+            catch
+            {
+                return State("idle");
+            }
+        }
+
         public async Task<JsonObject> AutoRipCurrentDiscAsync()
         {
             if (_busy)
