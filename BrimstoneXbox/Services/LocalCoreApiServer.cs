@@ -106,7 +106,7 @@ namespace BrimstoneXbox.Services
                 _dnssd.TextAttributes["name"] = "Xbox Core";
                 _dnssd.TextAttributes["role"] = "standalone";
                 _dnssd.TextAttributes["system_id"] = "";
-                _dnssd.TextAttributes["version"] = "0.2.5";
+                _dnssd.TextAttributes["version"] = "0.2.6";
                 _dnssd.TextAttributes["api_url"] = Address ?? "";
 
                 var result =
