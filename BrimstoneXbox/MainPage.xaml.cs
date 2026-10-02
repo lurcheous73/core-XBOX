@@ -694,6 +694,40 @@ namespace BrimstoneXbox
 
             try
             {
+                var bluRayRip = await _nativeCore.GetBluRayRipStatusAsync();
+                var bluRayState = JsonString(bluRayRip, "state", "idle");
+                if (bluRayState == "ripping")
+                {
+                    var progress = JsonNumber(bluRayRip, "progress_percent", 0);
+                    var current = JsonString(bluRayRip, "current_file", "");
+                    RipModeText.Text = "BLU-RAY AUTO-RIP";
+                    RipStatusText.Text = "Ripping Blu-ray · " +
+                        progress.ToString("0.0") + "%";
+                    RipDetailText.Text = string.IsNullOrWhiteSpace(current)
+                        ? "Copying the selected lossless title into Xbox Core."
+                        : "Reading " + current + " into local Core staging.";
+                    BluRayOptionsPanel.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                if (bluRayState == "source_staged")
+                {
+                    RipModeText.Text = "BLU-RAY AUTO-RIP";
+                    RipStatusText.Text = "Blu-ray source rip complete";
+                    RipDetailText.Text =
+                        "The selected title is safely staged in Core. Lossless MKV remux is queued as the next ingest stage.";
+                    BluRayOptionsPanel.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                if (bluRayState == "helper_required")
+                {
+                    RipModeText.Text = "BLU-RAY AUDIO";
+                    RipStatusText.Text = "MakeMKV helper required";
+                    RipDetailText.Text =
+                        "Xbox can see the title but not a decrypted media stream. The helper contract is saved for a MakeMKV-capable Core.";
+                }
+
                 var status = await _nativeCore.GetRipStatusAsync();
                 var state = JsonString(status, "state", "idle");
 
@@ -802,19 +836,20 @@ namespace BrimstoneXbox
             PrepareBluRayButton.IsEnabled = false;
             try
             {
-                var plan = await _nativeCore.CreateBluRayRipPlanAsync(
+                var result = await _nativeCore.RipBluRayTitleAsync(
                     option.Playlist,
                     KeepBluRayVideoCheckBox.IsChecked == true);
 
-                var backend = JsonString(plan, "backend", "");
-                var state = JsonString(plan, "backend_state", "");
-                RipStatusText.Text = "MKV rip prepared";
+                var state = JsonString(result, "state", "");
+                RipStatusText.Text = state == "helper_required"
+                    ? "MakeMKV helper required"
+                    : "Blu-ray rip started";
                 RipDetailText.Text = state == "helper_required"
-                    ? "This disc needs the MakeMKV helper. The Xbox has saved the exact playlist and lossless remux request for Core to run."
-                    : "The Xbox has saved the playlist and lossless MKV remux plan. Native remux is the next engine stage.";
-                Toast(backend == "makemkv-helper"
-                    ? "MakeMKV helper plan ready"
-                    : "Xbox MKV plan ready");
+                    ? "Xbox cannot read the decrypted media payload for this disc; the helper request has been saved."
+                    : "The selected title is being copied losslessly into local Core staging.";
+                Toast(state == "helper_required"
+                    ? "MakeMKV helper required"
+                    : "Blu-ray rip started");
             }
             catch (Exception ex)
             {
