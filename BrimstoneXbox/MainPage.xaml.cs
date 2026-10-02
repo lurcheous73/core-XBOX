@@ -497,6 +497,30 @@ namespace BrimstoneXbox
 
             try
             {
+                var nativeProbe = await _nativeCore.ProbeOpticalAsync();
+                var hw = nativeProbe.ContainsKey("hardware_visible") &&
+                         nativeProbe["hardware_visible"].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
+                         nativeProbe["hardware_visible"].GetBoolean();
+                var iface = nativeProbe.ContainsKey("interface_visible") &&
+                            nativeProbe["interface_visible"].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
+                            nativeProbe["interface_visible"].GetBoolean();
+                var media = nativeProbe.ContainsKey("mounted_media_visible") &&
+                            nativeProbe["mounted_media_visible"].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
+                            nativeProbe["mounted_media_visible"].GetBoolean();
+
+                if (hw || iface || media)
+                {
+                    RipModeText.Text = "XBOX OPTICAL PROBE";
+                    RipStatusText.Text = hw
+                        ? "Xbox optical drive visible inside Brimstone"
+                        : "Xbox optical interface visible";
+                    RipDetailText.Text =
+                        "Hardware: " + (hw ? "yes" : "no") +
+                        " · Interface: " + (iface ? "yes" : "no") +
+                        " · Mounted media: " + (media ? "yes" : "no") +
+                        ". Nickelback is currently serving science.";
+                }
+
                 var summary = await _core.GetIngestSummaryAsync();
                 RipModeText.Text = summary.AutoRip ? "AUTO-RIP ON" : "AUTO-RIP AVAILABLE";
 
