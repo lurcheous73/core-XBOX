@@ -65,6 +65,7 @@
     <Compile Include="Services\DiscMetadataService.cs" />
     <Compile Include="Services\LocalCoreApiServer.cs" />
     <Compile Include="Services\OpticalProbeService.cs" />
+    <Compile Include="Services\BluRayAudioService.cs" />
     <Compile Include="Services\ScsiOpticalStream.cs" />
     <Compile Include="Services\CdRipService.cs" />
     <Compile Include="Services\EndpointServer.cs" />
