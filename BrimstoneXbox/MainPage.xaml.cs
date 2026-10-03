@@ -532,6 +532,17 @@ namespace BrimstoneXbox
             ShowContent(SettingsPanel);
         }
 
+        void RevealCorePasswordButton_Click(object sender, RoutedEventArgs e)
+        {
+            Toast("Xbox Core login · admin / " + _nativeCore.AdminPassword);
+        }
+
+        void RotateCorePasswordButton_Click(object sender, RoutedEventArgs e)
+        {
+            var password = _nativeCore.RotateAdminCredentials();
+            Toast("New Xbox Core login · admin / " + password);
+        }
+
         async void RefreshButton_Click(object sender, RoutedEventArgs e)
         {
             try

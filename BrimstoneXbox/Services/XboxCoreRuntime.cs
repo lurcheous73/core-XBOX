@@ -4,6 +4,7 @@ using System;
 using System.Threading.Tasks;
 using Windows.Data.Json;
 using Windows.Storage;
+using Windows.Security.Credentials;
 
 namespace BrimstoneXbox.Services
 {
@@ -19,6 +20,7 @@ namespace BrimstoneXbox.Services
         LocalCoreApiServer _api;
         DateTimeOffset _startedAt;
         string _apiToken;
+        const string AdminVaultResource = "BrimstoneXbox.NativeCore";
 
         public XboxCoreRuntime()
         {
@@ -29,6 +31,7 @@ namespace BrimstoneXbox.Services
         public bool Ready => Running && _stack.Ready;
         public string Edition { get; private set; } = "core";
         public string ApiAddress => _api?.FriendlyAddress ?? _api?.Address;
+        public string AdminPassword => EnsureAdminPassword();
 
         public Task<JsonObject> ProbeOpticalAsync() => _optical.ProbeAsync();
         public Task<JsonObject> GetRipStatusAsync() => _cdRip.CurrentStatusAsync();
@@ -99,6 +102,7 @@ namespace BrimstoneXbox.Services
             _settings.Values["nativeCoreEdition"] = Edition;
             _settings.Values["nativeCoreStarted"] = _startedAt.ToString("o");
             EnsureApiToken();
+            EnsureAdminPassword();
 
             _api = new LocalCoreApiServer(this);
 
@@ -123,18 +127,61 @@ namespace BrimstoneXbox.Services
             }
         }
 
+        string EnsureAdminPassword()
+        {
+            var vault = new PasswordVault();
+            try
+            {
+                var saved = vault.Retrieve(AdminVaultResource, "admin");
+                saved.RetrievePassword();
+                if (!string.IsNullOrWhiteSpace(saved.Password))
+                    return saved.Password;
+            }
+            catch { }
+
+            object legacy;
+            if (_settings.Values.TryGetValue("nativeCoreAdminPassword", out legacy))
+            {
+                var oldPassword = legacy as string;
+                if (!string.IsNullOrWhiteSpace(oldPassword))
+                {
+                    SaveAdminPassword(oldPassword);
+                    _settings.Values.Remove("nativeCoreAdminPassword");
+                    return oldPassword;
+                }
+            }
+
+            return SaveAdminPassword(Guid.NewGuid().ToString("N"));
+        }
+
+        string SaveAdminPassword(string password)
+        {
+            var vault = new PasswordVault();
+            try
+            {
+                var old = vault.Retrieve(AdminVaultResource, "admin");
+                vault.Remove(old);
+            }
+            catch { }
+
+            vault.Add(new PasswordCredential(AdminVaultResource, "admin", password));
+            _settings.Values.Remove("nativeCoreAdminPassword");
+            return password;
+        }
+
+        public string RotateAdminCredentials()
+        {
+            var password = SaveAdminPassword(Guid.NewGuid().ToString("N"));
+            _apiToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            _settings.Values["nativeCoreApiToken"] = _apiToken;
+            return password;
+        }
+
         public JsonObject Login(string username, string password)
         {
             EnsureApiToken();
 
-            object savedPassword;
-            var expectedPassword = _settings.Values.TryGetValue(
-                "nativeCoreAdminPassword", out savedPassword)
-                ? savedPassword as string
-                : null;
-
-            if (string.IsNullOrWhiteSpace(expectedPassword))
-                expectedPassword = "password";
+            var expectedPassword = EnsureAdminPassword();
 
             var validUser = string.Equals(
                 string.IsNullOrWhiteSpace(username) ? "admin" : username.Trim(),
