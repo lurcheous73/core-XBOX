@@ -1,0 +1,120 @@
+name: Xbox Microsoft Store package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "BrimstoneXbox/**"
+      - "scripts/Generate-Assets.ps1"
+      - ".github/workflows/store.yml"
+
+jobs:
+  build-store:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate package artwork
+        shell: powershell
+        run: .\scripts\Generate-Assets.ps1
+
+      - name: Restore packages
+        shell: powershell
+        run: nuget restore .\BrimstoneXbox.sln
+
+      - name: Apply Microsoft Store identity
+        shell: pwsh
+        run: |
+          $manifestPath = "BrimstoneXbox\Package.appxmanifest"
+          [xml]$manifest = Get-Content $manifestPath
+          $ns = New-Object System.Xml.XmlNamespaceManager($manifest.NameTable)
+          $ns.AddNamespace("f", "http://schemas.microsoft.com/appx/manifest/foundation/windows10")
+          $identity = $manifest.SelectSingleNode("/f:Package/f:Identity", $ns)
+          $props = $manifest.SelectSingleNode("/f:Package/f:Properties", $ns)
+
+          $identity.Name = "BrimstoneCottage.BrimstoneCore"
+          $identity.Publisher = "CN=B3CF2B7F-E154-448A-B90A-D4252340CB9D"
+          $props.PublisherDisplayName = "Brimstone Cottage"
+
+          $manifest.Save((Resolve-Path $manifestPath))
+
+          Write-Host "STORE_IDENTITY_NAME=$($identity.Name)"
+          Write-Host "STORE_IDENTITY_PUBLISHER=$($identity.Publisher)"
+          Write-Host "STORE_VERSION=$($identity.Version)"
+
+      - name: Build x64 Store package
+        shell: pwsh
+        run: |
+          $out = Join-Path (Resolve-Path ".") "dist\xbox-store\"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          msbuild .\BrimstoneXbox.sln /m /t:Build `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:AppxPackageSigningEnabled=false `
+            /p:GenerateAppxPackageOnBuild=true `
+            /p:AppxBundle=Never `
+            /p:AppxPackageDir=$out
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Xbox Store package build failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Validate Store package
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem dist\xbox-store -Recurse -File |
+            Where-Object { $_.Extension -in ".appx", ".msix" } |
+            Select-Object -First 1
+
+          if (-not $pkg) { throw "Store APPX/MSIX not produced." }
+
+          $tmp = Join-Path $env:RUNNER_TEMP "brimstone-xbox-store"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "brimstone-xbox-store.zip"
+          Copy-Item $pkg.FullName $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+
+          [xml]$manifest = Get-Content (Join-Path $tmp "AppxManifest.xml")
+          $ns = New-Object System.Xml.XmlNamespaceManager($manifest.NameTable)
+          $ns.AddNamespace("f", "http://schemas.microsoft.com/appx/manifest/foundation/windows10")
+          $identity = $manifest.SelectSingleNode("/f:Package/f:Identity", $ns)
+          $props = $manifest.SelectSingleNode("/f:Package/f:Properties", $ns)
+          $family = $manifest.SelectSingleNode("/f:Package/f:Dependencies/f:TargetDeviceFamily", $ns)
+
+          if ($identity.Name -ne "BrimstoneCottage.BrimstoneCore") {
+            throw "Identity.Name mismatch: $($identity.Name)"
+          }
+          if ($identity.Publisher -ne "CN=B3CF2B7F-E154-448A-B90A-D4252340CB9D") {
+            throw "Publisher mismatch: $($identity.Publisher)"
+          }
+          if ($identity.Version -ne "0.2.21.0") {
+            throw "Version mismatch: $($identity.Version)"
+          }
+          if ($props.PublisherDisplayName -ne "Brimstone Cottage") {
+            throw "PublisherDisplayName mismatch: $($props.PublisherDisplayName)"
+          }
+          if ($family.Name -ne "Windows.Universal") {
+            throw "Unexpected TargetDeviceFamily: $($family.Name)"
+          }
+
+          Get-FileHash $pkg.FullName -Algorithm SHA256
+          Write-Host "STORE_PACKAGE=$($pkg.FullName)"
+          Write-Host "STORE_MANIFEST=PASS"
+
+      - name: Upload Microsoft Store package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brimstone-Xbox-Store-0.2.21-x64
+          path: |
+            dist/xbox-store/**/*.appx
+            dist/xbox-store/**/*.msix
+          if-no-files-found: error
+          retention-days: 30
