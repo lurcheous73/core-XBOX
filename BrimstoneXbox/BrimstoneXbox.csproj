@@ -87,4 +87,11 @@
   </PropertyGroup>
 
   <Import Project="$(MSBuildExtensionsPath)\Microsoft\WindowsXaml\v$(VisualStudioVersion)\Microsoft.Windows.UI.Xaml.CSharp.targets" />
+  <!-- The existing PR workflow uploads bin/**. Produce a signed Dev Mode
+       package there using a disposable development certificate, without
+       changing retail Store signing or requiring a stored private key. -->
+  <Target Name="BrimstonePullRequestDevPackage" AfterTargets="Build"
+          Condition="'$(GITHUB_EVENT_NAME)' == 'pull_request' and '$(AppxPackageSigningEnabled)' == 'false'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\scripts\Build-DevPackage.ps1&quot; -OutputRoot &quot;$(ProjectDir)$(OutputPath)DevMode&quot;" />
+  </Target>
 </Project>
