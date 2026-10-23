@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.Data.Json;
 using Windows.Storage;
 using Windows.System;
 using Windows.UI.Xaml;
@@ -14,1051 +15,407 @@ namespace BrimstoneXbox
 {
     public sealed partial class MainPage : Page
     {
-        const string EditionSetting = "xboxEdition";
-
-        readonly CoreClient _core = new CoreClient();
-        readonly XboxCoreRuntime _nativeCore = new XboxCoreRuntime();
+        CoreClient _core = new CoreClient();
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
-        readonly DispatcherTimer _heartbeat = new DispatcherTimer();
-        readonly DispatcherTimer _uiRefresh = new DispatcherTimer();
-        readonly DispatcherTimer _serviceRefresh = new DispatcherTimer();
-        readonly DispatcherTimer _toastTimer = new DispatcherTimer();
-
+        readonly DispatcherTimer _poll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        readonly DispatcherTimer _heartbeat = new DispatcherTimer { Interval = TimeSpan.FromSeconds(25) };
+        readonly DispatcherTimer _toast = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         EndpointServer _server;
-        CoreAlbum _album;
-        CoreAlbum _heroAlbum;
         List<CoreAlbum> _albums = new List<CoreAlbum>();
-        string _mode = "";
-        bool _serviceRefreshBusy;
-        string _lastObservedRipFingerprint = "";
-        string _lastObservedBluRayManifest = "";
+        List<MediaCard> _videos = new List<MediaCard>();
+        List<MediaCard> _sectionCards = new List<MediaCard>();
+        CoreAlbum _album;
+        string _section = "Home", _endpoint = "", _videoId = "";
+        long _context, _operation, _seekOperation, _volumeOperation;
+        bool _pollBusy, _updatingOutput, _updatingPlayback, _seekEditing, _videoOpening, _initialised;
 
         public MainPage()
         {
             InitializeComponent();
-            Loaded += MainPage_Loaded;
-
-            PlaybackService.Instance.StateChanged += (s, e) =>
-                Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, UpdatePlaybackUi);
-
-            _heartbeat.Interval = TimeSpan.FromSeconds(25);
-            _heartbeat.Tick += Heartbeat_Tick;
-
-            _uiRefresh.Interval = TimeSpan.FromSeconds(1);
-            _uiRefresh.Tick += (s, e) => UpdatePlaybackUi();
-            _uiRefresh.Start();
-
-            _serviceRefresh.Interval = TimeSpan.FromSeconds(5);
-            _serviceRefresh.Tick += ServiceRefresh_Tick;
-
-            _toastTimer.Interval = TimeSpan.FromSeconds(4);
-            _toastTimer.Tick += (s, e) =>
-            {
-                _toastTimer.Stop();
-                ToastBorder.Visibility = Visibility.Collapsed;
-            };
+            Loaded += LoadedAsync;
+            _poll.Tick += async (s, e) => await PollAsync();
+            _heartbeat.Tick += async (s, e) => await HeartbeatAsync();
+            _toast.Tick += (s, e) => { _toast.Stop(); ToastBorder.Visibility = Visibility.Collapsed; };
         }
 
-        async void MainPage_Loaded(object sender, RoutedEventArgs e)
+        async void LoadedAsync(object sender, RoutedEventArgs e)
         {
-            _mode = "standalone";
-            WriteSetting(EditionSetting, "standalone");
-            _settings.Values.Remove("sooloosHost");
-
-            CoreUrlBox.Text = string.IsNullOrWhiteSpace(_core.BaseUrl)
-                ? ""
-                : _core.BaseUrl;
-            TransferCoreUrlBox.Text = _core.BaseUrl ?? "";
-            TransferCoreUsernameBox.Text = "admin";
-
-            ConfigureEdition();
-
-            try
-            {
-                await _nativeCore.StartAsync("standalone");
-                await LoadLibrary();
-                ShowShell();
-                _serviceRefresh.Start();
-                ConnectionText.Text = _nativeCore.Ready
-                    ? "Standalone Xbox Core ready"
-                    : "Standalone Xbox Core starting";
-            }
-            catch (Exception ex)
-            {
-                ShowShell();
-                _serviceRefresh.Start();
-                ConnectionText.Text = "Xbox Core degraded";
-                Toast("Xbox Core: " + ex.Message);
-            }
-        }
-
-        void CoreEditionButton_Click(object sender, RoutedEventArgs e)
-        {
-            SelectEdition("standalone");
-        }
-
-        async void SelectEdition(string mode)
-        {
-            _mode = "standalone";
-            WriteSetting(EditionSetting, "standalone");
-            ConfigureEdition();
-
-            try
-            {
-                await _nativeCore.StartAsync("standalone");
-                await LoadLibrary();
-                ShowShell();
-                _serviceRefresh.Start();
-                ConnectionText.Text = "Standalone Xbox Core ready";
-            }
-            catch (Exception ex)
-            {
-                ShowShell();
-                _serviceRefresh.Start();
-                ConnectionText.Text = "Xbox Core degraded";
-                Toast("Xbox Core: " + ex.Message);
-            }
-        }
-
-        void ConfigureEdition()
-        {
-            CoreSetupFields.Visibility = Visibility.Visible;
-            SetupHeadingText.Text = "Optional Core destination";
-            SetupHelpText.Text =
-                "This Xbox is its own Brimstone Core. Connect another Core only when you want to copy music between them.";
-            SetupConnectButton.Content = "Connect other Core";
-
-            EditionBadgeText.Text = "STANDALONE CORE · XBOX";
-            SettingsEditionText.Text = "Standalone Core";
-            FooterSignalText.Text = "xbox-core.local";
-        }
-
-        async void SetupConnectButton_Click(object sender, RoutedEventArgs e)
-        {
-            SetupConnectButton.IsEnabled = false;
-            SetupStatusText.Text = "";
-
-            try
-            {
-                SetupStatusText.Text = "Connecting destination Core…";
-                await _core.LoginAsync(
-                    CoreUrlBox.Text,
-                    UsernameBox.Text,
-                    PasswordBox.Password);
-                PasswordBox.Password = "";
-                SetupStatusText.Text = "Destination Core ready";
-                UpdateSettings();
-                ShowShell();
-                Toast("Destination Core connected");
-            }
-            catch (Exception ex)
-            {
-                SetupStatusText.Text = ex.Message;
-                Toast(ex.Message);
-            }
-            finally
-            {
-                SetupConnectButton.IsEnabled = true;
-            }
-        }
-
-        void SetupBackButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowFirstRun();
-        }
-
-        async Task BringCoreOnline(bool allowPair)
-        {
-            if (_server == null)
-            {
-                _server = new EndpointServer(() => _core.DeviceToken);
-                await _server.StartAsync();
-            }
-
-            if (string.IsNullOrWhiteSpace(_server.Address))
-                throw new InvalidOperationException("Xbox has no usable LAN address.");
-
-            if (!_core.HasDeviceCredential)
-            {
-                if (!allowPair) throw new InvalidOperationException("Xbox is not paired.");
-                await _core.PairDeviceAsync(XboxIdentity.EndpointId);
-            }
-
-            await _core.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address);
-            ConnectionText.Text = "Core connected";
-            OutputText.Text = "Xbox";
-            FooterOutputText.Text = "Xbox";
-            _heartbeat.Start();
-            _serviceRefresh.Start();
-            UpdateSettings();
-        }
-
-        async void Heartbeat_Tick(object sender, object e)
-        {
-            if (_server == null || !_core.HasDeviceCredential) return;
-            try
-            {
-                await _core.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address);
-                ConnectionText.Text = "Core connected";
-            }
-            catch
-            {
-                ConnectionText.Text = "Core interrupted";
-            }
-        }
-
-        async void ServiceRefresh_Tick(object sender, object e)
-        {
-            if (_serviceRefreshBusy) return;
-            _serviceRefreshBusy = true;
-            try
-            {
-                if (QueuePanel.Visibility == Visibility.Visible)
-                    await RefreshQueue();
-                if (RipPanel.Visibility == Visibility.Visible)
-                    await RefreshRipStatus();
-
-                await ObserveCompletedRipAsync();
-            }
-            catch
-            {
-                // Keep TV playback usable during a transient local service failure.
-            }
-            finally
-            {
-                _serviceRefreshBusy = false;
-            }
-        }
-
-        async Task LoadLibrary()
-        {
-            var albums = await _nativeCore.GetAlbumsAsync();
-            LibrarySummaryText.Text = albums.Count +
-                (albums.Count == 1 ? " album" : " albums") +
-                " · Standalone Xbox Core";
-
-            _albums = albums ?? new List<CoreAlbum>();
-
-            var alphabetical = _albums
-                .OrderBy(a => a.Artist ?? "")
-                .ThenBy(a => a.Title ?? "")
-                .ToList();
-
-            var recent = _albums
-                .OrderByDescending(a => a.AddedAt)
-                .ThenBy(a => a.Title ?? "")
-                .ToList();
-
-            AlbumGrid.ItemsSource = alphabetical;
-            RecentlyAddedGrid.ItemsSource = recent.Take(14).ToList();
-            RecentlyRippedGrid.ItemsSource = recent.Take(10).ToList();
-
-            var favourites = _albums
-                .Where(a => a.IsFavourite)
-                .OrderBy(a => a.Artist ?? "")
-                .ThenBy(a => a.Title ?? "")
-                .ToList();
-
-            FavouritesGrid.ItemsSource = favourites;
-            FavouriteSection.Visibility = favourites.Count > 0
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-
-            RefreshHomeHero();
-        }
-
-        void RefreshHomeHero()
-        {
-            var playback = PlaybackService.Instance.Snapshot();
-            CoreAlbum active = null;
-            if (!string.IsNullOrWhiteSpace(playback.Album))
-            {
-                active = _albums.FirstOrDefault(a =>
-                    string.Equals(a.Title, playback.Album,
-                        StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (active != null &&
-                !string.Equals(playback.State, "stopped",
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(playback.State, "idle",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                ContinueGrid.ItemsSource = new List<CoreAlbum> { active };
-                ContinueSection.Visibility = Visibility.Visible;
-                SetHero(active, playback.Playing ? "NOW PLAYING" : "CONTINUE LISTENING");
-                HeroPlayButton.Content = playback.Playing ? "Ⅱ  Pause" : "▶  Resume";
-                return;
-            }
-
-            ContinueSection.Visibility = Visibility.Collapsed;
-            var newest = _albums
-                .OrderByDescending(a => a.AddedAt)
-                .FirstOrDefault();
-            SetHero(newest, newest == null ? "BRIMSTONE CORE" : "RECENTLY ADDED");
-            HeroPlayButton.Content = newest == null ? "▶  Play" : "▶  Play album";
-        }
-
-        void SetHero(CoreAlbum album, string eyebrow)
-        {
-            _heroAlbum = album;
-            HeroEyebrowText.Text = eyebrow ?? "BRIMSTONE CORE";
-
-            if (album == null)
-            {
-                HeroTitleText.Text = "Your Music";
-                HeroArtistText.Text = "Rip a CD or add music to get started";
-                HeroArtworkImage.Source = null;
-                HeroPlayButton.IsEnabled = false;
-                return;
-            }
-
-            HeroTitleText.Text = album.Title ?? "Untitled";
-            HeroArtistText.Text = album.Artist ?? "Unknown Artist";
-            HeroArtworkImage.Source = album.Artwork;
-            HeroPlayButton.IsEnabled = true;
-        }
-
-        void AlbumGrid_ItemClick(object sender, ItemClickEventArgs e)
-        {
-            _album = e.ClickedItem as CoreAlbum;
-            if (_album == null) return;
-
-            AlbumTitleText.Text = _album.Title;
-            AlbumArtistText.Text = _album.Artist;
-            AlbumArtworkImage.Source = _album.Artwork;
-            FavouriteAlbumButton.Content = _album.IsFavourite
-                ? "♥  Favourite"
-                : "♡  Favourite";
-
-            var directTransfer =
-                !string.Equals(
-                    _album.SourceKind,
-                    "bluray",
-                    StringComparison.OrdinalIgnoreCase);
-            SendToCoreButton.Visibility = directTransfer
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-
-            TracksList.Visibility = Visibility.Visible;
-            TracksList.ItemsSource = _album.Tracks;
-
-            ShowContent(AlbumPanel);
-            PlayAlbumButton.Focus(FocusState.Programmatic);
-        }
-
-        async void HeroPlayButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var playback = PlaybackService.Instance.Snapshot();
-                if (_heroAlbum != null &&
-                    string.Equals(playback.Album, _heroAlbum.Title,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(playback.State, "stopped",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(playback.State, "idle",
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    await Transport(playback.Playing ? "pause" : "resume");
-                }
-                else if (_heroAlbum != null)
-                {
-                    await _nativeCore.PlayAlbumAsync(_heroAlbum);
-                }
-
-                RefreshHomeHero();
-            }
-            catch (Exception ex)
-            {
-                Toast(ex.Message);
-            }
-        }
-
-        async void HeroRipButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowContent(RipPanel);
-            await RefreshRipStatus();
-        }
-
-        async void FavouriteAlbumButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_album == null)
-                return;
-
-            var favourite = _nativeCore.ToggleFavourite(_album);
-            FavouriteAlbumButton.Content = favourite
-                ? "♥  Favourite"
-                : "♡  Favourite";
-
-            await LoadLibrary();
-            Toast(favourite ? "Added to Favourites" : "Removed from Favourites");
-        }
-
-        async void SendToCoreButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_album == null)
-                return;
-
-            if (!_core.HasSavedLogin)
-            {
-                UpdateSettings();
-                ShowContent(SettingsPanel);
-                TransferCoreUrlBox.Focus(FocusState.Programmatic);
-                Toast("Connect the destination Core first");
-                return;
-            }
-
-            SendToCoreButton.IsEnabled = false;
-            try
-            {
-                Toast("Sending album to Core…");
-                var result = await _core.ImportAlbumAsync(_album);
-                var imported = JsonNumber(result, "imported", 0);
-                var existing = JsonNumber(result, "already_present", 0);
-                Toast("Core transfer complete · " +
-                    imported.ToString("0") + " imported" +
-                    (existing > 0 ? " · " + existing.ToString("0") + " already there" : ""));
-            }
-            catch (Exception ex)
-            {
-                Toast("Core transfer: " + ex.Message);
-            }
-            finally
-            {
-                SendToCoreButton.IsEnabled = true;
-            }
-        }
-
-        async void TracksList_ItemClick(object sender, ItemClickEventArgs e)
-        {
-            var track = e.ClickedItem as CoreTrack;
-            if (track == null) return;
-
-            try
-            {
-                await _nativeCore.PlayTrackAsync(track);
-                ShowContent(NowPlayingPanel);
-            }
-            catch (Exception ex)
-            {
-                Toast(ex.Message);
-            }
-        }
-
-        async void PlayAlbumButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_album == null) return;
-
-            try
-            {
-                await _nativeCore.PlayAlbumAsync(_album);
-                ShowContent(NowPlayingPanel);
-            }
-            catch (Exception ex)
-            {
-                Toast(ex.Message);
-            }
-        }
-
-        async Task Transport(string action)
-        {
-            try
-            {
-                _nativeCore.Control(action);
-                await Task.CompletedTask;
-            }
-            catch (Exception ex)
-            {
-                Toast(ex.Message);
-            }
-        }
-
-        async void PlayPauseButton_Click(object sender, RoutedEventArgs e)
-        {
-            var playing = PlaybackService.Instance.Snapshot().Playing;
-            await Transport(playing ? "pause" : "resume");
-        }
-
-        async void StopButton_Click(object sender, RoutedEventArgs e) => await Transport("stop");
-        async void PreviousButton_Click(object sender, RoutedEventArgs e) => await Transport("previous");
-        async void NextButton_Click(object sender, RoutedEventArgs e) => await Transport("next");
-
-        void MusicNavButton_Click(object sender, RoutedEventArgs e) => ShowContent(MusicPanel);
-
-        async void QueueNavButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowContent(QueuePanel);
-            await RefreshQueue();
-        }
-
-        void NowNavButton_Click(object sender, RoutedEventArgs e) => ShowContent(NowPlayingPanel);
-
-        async void RipNavButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowContent(RipPanel);
-            await RefreshRipStatus();
-        }
-
-        void BackToLibraryButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowContent(MusicPanel);
-            MusicNavButton.Focus(FocusState.Programmatic);
-        }
-
-        async void TransferCoreConnectButton_Click(object sender, RoutedEventArgs e)
-        {
-            TransferCoreStatusText.Text = "Connecting…";
-            try
-            {
-                await _core.LoginAsync(
-                    TransferCoreUrlBox.Text,
-                    TransferCoreUsernameBox.Text,
-                    TransferCorePasswordBox.Password);
-                TransferCorePasswordBox.Password = "";
-                TransferCoreUrlBox.Text = _core.BaseUrl ?? TransferCoreUrlBox.Text;
-                TransferCoreStatusText.Text = "Ready · verified imports enabled";
-                Toast("Destination Core connected");
-            }
-            catch (Exception ex)
-            {
-                TransferCoreStatusText.Text = ex.Message;
-            }
-        }
-
-        void SettingsNavButton_Click(object sender, RoutedEventArgs e)
-        {
-            UpdateSettings();
-            ShowContent(SettingsPanel);
-        }
-
-        void RevealCorePasswordButton_Click(object sender, RoutedEventArgs e)
-        {
-            Toast("Xbox Core login · admin / " + _nativeCore.AdminPassword);
-        }
-
-        void RotateCorePasswordButton_Click(object sender, RoutedEventArgs e)
-        {
-            var password = _nativeCore.RotateAdminCredentials();
-            Toast("New Xbox Core login · admin / " + password);
-        }
-
-        async void RefreshButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                await LoadLibrary();
-                Toast("Library refreshed");
-            }
-            catch (Exception ex)
-            {
-                Toast(ex.Message);
-            }
-        }
-
-        async Task RefreshQueue()
-        {
-            try
-            {
-                var queue = _nativeCore.GetQueue();
-                QueueList.ItemsSource = queue;
-                QueueSummaryText.Text = queue.Count == 0
-                    ? "Nothing queued"
-                    : queue.Count +
-                      (queue.Count == 1 ? " item" : " items") +
-                      " · Xbox";
-            }
-            catch (Exception ex)
-            {
-                QueueSummaryText.Text = ex.Message;
-            }
-
-            await Task.CompletedTask;
-        }
-
-        async Task ObserveCompletedRipAsync()
-        {
-            var changed = false;
-            var label = "New album added to Your Music";
-
-            var status = await _nativeCore.GetRipStatusAsync();
-            if (string.Equals(
-                JsonString(status, "state", "idle"),
-                "complete",
-                StringComparison.OrdinalIgnoreCase))
-            {
-                var fingerprint = JsonString(status, "fingerprint", "");
-                if (!string.IsNullOrWhiteSpace(fingerprint) &&
-                    !string.Equals(
-                        fingerprint,
-                        _lastObservedRipFingerprint,
-                        StringComparison.Ordinal))
-                {
-                    _lastObservedRipFingerprint = fingerprint;
-                    changed = true;
-                }
-            }
-
-            var bluRay = await _nativeCore.GetBluRayRipStatusAsync();
-            if (string.Equals(
-                JsonString(bluRay, "state", "idle"),
-                "source_staged",
-                StringComparison.OrdinalIgnoreCase))
-            {
-                var manifest = JsonString(bluRay, "manifest", "");
-                if (!string.IsNullOrWhiteSpace(manifest) &&
-                    !string.Equals(
-                        manifest,
-                        _lastObservedBluRayManifest,
-                        StringComparison.Ordinal))
-                {
-                    _lastObservedBluRayManifest = manifest;
-                    changed = true;
-                    label = "Blu-ray title added to Your Music";
-                }
-            }
-
-            if (!changed)
-                return;
-
-            await LoadLibrary();
-            Toast(label);
-        }
-
-        async Task RefreshRipStatus()
-        {
-            try
-            {
-                SendBluRayToCoreButton.Visibility = Visibility.Collapsed;
-                var bluRayRip = await _nativeCore.GetBluRayRipStatusAsync();
-                var bluRayState = JsonString(bluRayRip, "state", "idle");
-                if (bluRayState == "ripping")
-                {
-                    var progress = JsonNumber(bluRayRip, "progress_percent", 0);
-                    var current = JsonString(bluRayRip, "current_file", "");
-                    RipModeText.Text = "BLU-RAY AUTO-RIP";
-                    RipStatusText.Text = "Ripping Blu-ray · " +
-                        progress.ToString("0.0") + "%";
-                    RipDetailText.Text = string.IsNullOrWhiteSpace(current)
-                        ? "Copying the selected lossless title into Xbox Core."
-                        : "Reading " + current + " into local Core staging.";
-                    BluRayOptionsPanel.Visibility = Visibility.Collapsed;
-                    return;
-                }
-
-                if (bluRayState == "source_staged")
-                {
-                    RipModeText.Text = "BLU-RAY AUTO-RIP";
-                    RipStatusText.Text = "Blu-ray source rip complete";
-                    RipDetailText.Text =
-                        "The selected MPLS title and source clips are safely staged on Xbox. Finish on another Core to reconstruct the exact playlist and publish verified stereo/multichannel FLAC.";
-                    BluRayOptionsPanel.Visibility = Visibility.Collapsed;
-                    SendBluRayToCoreButton.Visibility = Visibility.Visible;
-                    return;
-                }
-
-                if (bluRayState == "protected")
-                {
-                    RipModeText.Text = "BLU-RAY AUDIO";
-                    RipStatusText.Text = "Protected Blu-ray detected";
-                    RipDetailText.Text =
-                        "Xbox has identified the disc, playlists and chapters, but this title is AACS-protected and the Xbox UWP sandbox does not expose decrypted media for ripping.";
-                    BluRayOptionsPanel.Visibility = Visibility.Visible;
-                }
-
-                var status = await _nativeCore.GetRipStatusAsync();
-                var state = JsonString(status, "state", "idle");
-
-                RipModeText.Text = "XBOX AUTO-RIP";
-
-                if (state == "ripping")
-                {
-                    var progress = JsonNumber(status, "progress_percent", 0);
-                    var track = JsonNumber(status, "current_track", 0);
-                    var total = JsonNumber(status, "track_count", 0);
-                    RipStatusText.Text = "Ripping track " + track.ToString("0") +
-                        " of " + total.ToString("0") +
-                        " · " + progress.ToString("0.0") + "%";
-                    RipDetailText.Text =
-                        "Reading raw CDDA from the Xbox optical drive, writing WAV, hashing each track and publishing into the local Core library.";
-                    return;
-                }
-
-                if (state == "complete")
-                {
-                    var tracks = JsonNumber(status, "completed_tracks",
-                        JsonNumber(status, "track_count", 0));
-                    var speed = JsonNumber(status, "rip_speed_x", 0);
-                    var ejected = JsonBool(status, "eject");
-                    RipStatusText.Text = "Rip complete · " + tracks.ToString("0") + " tracks";
-                    RipDetailText.Text =
-                        "Verified local rip" +
-                        (speed > 0 ? " · " + speed.ToString("0.00") + "×" : "") +
-                        (ejected ? " · disc ejected" : "") +
-                        ". Refresh Your Music to see the album.";
-                    return;
-                }
-
-                var bluRay = await _nativeCore.ScanBluRayAsync();
-                if (JsonBool(bluRay, "available") &&
-                    JsonNumber(bluRay, "title_count", 0) > 0)
-                {
-                    var options = new List<BluRayTitleOption>();
-                    if (bluRay.ContainsKey("titles") &&
-                        bluRay["titles"].ValueType == Windows.Data.Json.JsonValueType.Array)
-                    {
-                        foreach (var value in bluRay.GetNamedArray("titles"))
-                        {
-                            if (value.ValueType != Windows.Data.Json.JsonValueType.Object)
-                                continue;
-
-                            var title = value.GetObject();
-                            var seconds = JsonNumber(title, "duration_seconds", 0);
-                            var recommended = JsonBool(title, "recommended");
-                            var playlist = JsonString(title, "playlist", "");
-                            var playlistId = JsonString(title, "playlist_id", playlist);
-
-                            options.Add(new BluRayTitleOption
-                            {
-                                Playlist = playlist,
-                                Label = (recommended ? "Main title · " : "") +
-                                    playlistId + " · " + FormatDuration(seconds)
-                            });
-                        }
-                    }
-
-                    BluRayTitleCombo.ItemsSource = options;
-                    if (options.Count > 0)
-                        BluRayTitleCombo.SelectedIndex = 0;
-
-                    BluRayOptionsPanel.Visibility = Visibility.Visible;
-                    RipModeText.Text = "BLU-RAY AUDIO";
-                    RipStatusText.Text = JsonString(bluRay, "disc_label", "Blu-ray") +
-                        " · " + options.Count +
-                        (options.Count == 1 ? " title" : " titles");
-                    RipDetailText.Text = JsonBool(bluRay, "protection_detected")
-                        ? "Playlist structure found. This disc is AACS-protected, so Xbox can inspect titles and chapters but cannot produce a decrypted rip from the UWP sandbox."
-                        : "Choose a title. Audio is preserved bit-for-bit into MKV; video stays off unless you tick Keep video.";
-                    return;
-                }
-
-                BluRayOptionsPanel.Visibility = Visibility.Collapsed;
-
-                var probe = await _nativeCore.ProbeOpticalAsync();
-                var probeState = JsonString(probe, "status", "unknown");
-                var devices = JsonNumber(probe, "device_count", 0);
-
-                RipStatusText.Text = devices > 0
-                    ? "Waiting for a music disc"
-                    : "Optical drive unavailable";
-                RipDetailText.Text = devices > 0
-                    ? "Xbox optical ingest is armed. Insert CD, DVD-A or Blu-ray Audio."
-                    : "Optical probe: " + probeState;
-            }
-            catch (Exception ex)
-            {
-                RipStatusText.Text = "Rip status unavailable";
-                RipDetailText.Text = ex.Message;
-            }
-        }
-
-        async void SendBluRayToCoreButton_Click(
-            object sender,
-            RoutedEventArgs e)
-        {
-            if (!_core.HasSavedLogin)
-            {
-                UpdateSettings();
-                ShowContent(SettingsPanel);
-                TransferCoreUrlBox.Focus(FocusState.Programmatic);
-                Toast("Connect the destination Core first");
-                return;
-            }
-
-            SendBluRayToCoreButton.IsEnabled = false;
-            try
-            {
-                var status = await _nativeCore.GetBluRayRipStatusAsync();
-                RipStatusText.Text = "Sending Blu-ray title to Core…";
-                RipDetailText.Text =
-                    "Uploading the exact MPLS clip chain. Core Ingest will reconstruct the selected title and publish the best stereo plus each multichannel layout.";
-
-                var result = await _core.ImportStagedBluRayAsync(status);
-                var ingestResult =
-                    result.ContainsKey("result") &&
-                    result["result"].ValueType == Windows.Data.Json.JsonValueType.Object
-                        ? result.GetNamedObject("result")
-                        : null;
-                var outputs = ingestResult != null &&
-                              ingestResult.ContainsKey("outputs") &&
-                              ingestResult["outputs"].ValueType == Windows.Data.Json.JsonValueType.Array
-                    ? ingestResult.GetNamedArray("outputs").Count
-                    : 0;
-
-                RipStatusText.Text = "Blu-ray published on Core";
-                RipDetailText.Text =
-                    "Playlist reconstructed and verified" +
-                    (outputs > 0
-                        ? " · " + outputs +
-                          (outputs == 1 ? " audio edition" : " audio editions")
-                        : "") +
-                    ". The Xbox source rip is retained as recovery media.";
-                Toast("Blu-ray Core ingest complete");
-            }
-            catch (Exception ex)
-            {
-                RipStatusText.Text = "Blu-ray Core ingest failed";
-                RipDetailText.Text = ex.Message;
-                Toast(ex.Message);
-            }
-            finally
-            {
-                SendBluRayToCoreButton.IsEnabled = true;
-            }
-        }
-
-        async void PrepareBluRayButton_Click(object sender, RoutedEventArgs e)
-        {
-            var option = BluRayTitleCombo.SelectedItem as BluRayTitleOption;
-            if (option == null)
-            {
-                Toast("Choose a Blu-ray title first");
-                return;
-            }
-
-            PrepareBluRayButton.IsEnabled = false;
-            try
-            {
-                var result = await _nativeCore.RipBluRayTitleAsync(
-                    option.Playlist,
-                    KeepBluRayVideoCheckBox.IsChecked == true);
-
-                var state = JsonString(result, "state", "");
-                RipStatusText.Text = state == "protected"
-                    ? "Protected Blu-ray detected"
-                    : "Blu-ray rip started";
-                RipDetailText.Text = state == "protected"
-                    ? "Xbox can read the Blu-ray structure but AACS prevents a decrypted media rip inside the Xbox sandbox."
-                    : "The selected title is being copied losslessly into local Core staging.";
-                Toast(state == "protected"
-                    ? "Protected Blu-ray detected"
-                    : "Blu-ray rip started");
-            }
-            catch (Exception ex)
-            {
-                Toast(ex.Message);
-            }
-            finally
-            {
-                PrepareBluRayButton.IsEnabled = true;
-            }
-        }
-
-        void RipNowButton_Click(object sender, RoutedEventArgs e)
-        {
-            _ = _nativeCore.RipNowAsync();
-            Toast("Xbox Core rip started");
-        }
-
-        void ChangeEditionButton_Click(object sender, RoutedEventArgs e)
-        {
-            _heartbeat.Stop();
-            _serviceRefresh.Stop();
-            _mode = "";
-            _settings.Values.Remove(EditionSetting);
-            ShowFirstRun();
-        }
-
-        void ReconnectButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowSetup();
-        }
-
-        void Page_KeyDown(object sender, KeyRoutedEventArgs e)
-        {
-            if (ShellPanel.Visibility == Visibility.Visible)
-            {
-                if (e.Key == VirtualKey.GamepadView)
-                {
-                    ShowContent(NowPlayingPanel);
-                    e.Handled = true;
-                }
-                else if (e.Key == VirtualKey.GamepadMenu)
-                {
-                    UpdateSettings();
-                    ShowContent(SettingsPanel);
-                    e.Handled = true;
-                }
-                else if (e.Key == VirtualKey.GamepadB && AlbumPanel.Visibility == Visibility.Visible)
-                {
-                    ShowContent(MusicPanel);
-                    e.Handled = true;
-                }
-            }
-            else if (SetupPanel.Visibility == Visibility.Visible && e.Key == VirtualKey.GamepadB)
-            {
-                ShowFirstRun();
-                e.Handled = true;
-            }
-        }
-
-        void UpdatePlaybackUi()
-        {
-            var p = PlaybackService.Instance.Snapshot();
-            var title = string.IsNullOrWhiteSpace(p.Title)
-                ? "Nothing playing"
-                : p.Title;
-            var artist = p.Artist ?? "";
-            var album = p.Album ?? "";
-            var state = p.State ?? "";
-            var playing = p.Playing;
-
-            NowTitleText.Text = title;
-            NowArtistText.Text = artist;
-            NowAlbumText.Text = album;
-            FooterTitleText.Text = title;
-            FooterMetaText.Text = string.Join(
-                " · ",
-                new[] { artist, album, state }
-                    .Where(v => !string.IsNullOrWhiteSpace(v)));
-            PlayPauseButton.Content = playing
-                ? "Ⅱ  Pause"
-                : "▶  Play";
-            FooterPlayPauseButton.Content = playing
-                ? "Ⅱ"
-                : "▶";
-
-            OutputText.Text =
-                PlaybackService.Instance.AudioOutputName;
-            FooterOutputText.Text =
-                PlaybackService.Instance.AudioOutputName;
-
-            if (MusicPanel.Visibility == Visibility.Visible)
-                RefreshHomeHero();
-        }
-
-        void UpdateSettings()
-        {
-            SettingsEditionText.Text = "Standalone Core";
-            TransferCoreUrlBox.Text =
-                _core.BaseUrl ??
-                TransferCoreUrlBox.Text ??
-                "";
-            TransferCoreStatusText.Text =
-                _core.HasSavedLogin
-                    ? "Ready · " + (_core.BaseUrl ?? "")
-                    : "Optional · not connected";
-
-            SettingsCoreText.Text = _nativeCore.Running
-                ? "Xbox Core · " +
-                  (_nativeCore.ApiAddress ??
-                   "http://xbox-core.local:8096")
-                : "Starting local Core…";
-            SettingsEndpointText.Text =
-                XboxIdentity.EndpointId;
-        }
-
-        void ShowFirstRun()
-        {
-            ShowShell();
-        }
-
-        void ShowSetup()
-        {
-            FirstRunPanel.Visibility = Visibility.Collapsed;
-            SetupPanel.Visibility = Visibility.Visible;
-            ShellPanel.Visibility = Visibility.Collapsed;
-            ConfigureEdition();
-
+            if (_initialised) return;
+            _initialised = true;
+            // R1 retires the Xbox-hosted Core. Never start a local engine, scan,
+            // create an administrator, rip a disc or listen for Core API traffic.
+            // Package identity and LocalFolder remain unchanged for in-place updates.
+            _settings.Values["xboxEdition"] = "control";
             CoreUrlBox.Text = _core.BaseUrl ?? "";
-            CoreUrlBox.Focus(FocusState.Programmatic);
+            await PlaybackService.Instance.InitialisePreferredOutputAsync();
+            VideoPlayer.SetMediaPlayer(PlaybackService.Instance.Player);
+            _poll.Start();
+            if (_core.HasSavedLogin)
+            {
+                var context = _context;
+                try { await ConnectExistingAsync(_core, context); }
+                catch (Exception ex) { if (context == _context) ShowSetup(ex.Message); }
+            }
         }
 
-        void ShowShell()
+        async void Connect_Click(object sender, RoutedEventArgs e)
         {
-            FirstRunPanel.Visibility = Visibility.Collapsed;
+            var context = ++_context;
+            _operation++;
+            ConnectButton.IsEnabled = false;
+            SetupStatus.Text = "Connecting…";
+            var client = new CoreClient();
+            try
+            {
+                await client.LoginAsync(CoreUrlBox.Text, UsernameBox.Text, PasswordBox.Password);
+                PasswordBox.Password = "";
+                if (context != _context) return;
+                _core = client;
+                await ConnectExistingAsync(client, context);
+            }
+            catch (Exception ex) { if (context == _context) ShowSetup(ex.Message); }
+            finally { if (context == _context) ConnectButton.IsEnabled = true; }
+        }
+
+        async Task ConnectExistingAsync(CoreClient client, long context)
+        {
+            await client.RequestAsync("/api/v1/health");
+            var albums = await client.PublishedMusicAsync();
+            if (context != _context) return;
+            _albums = albums;
+            try
+            {
+                if (_server == null) { _server = new EndpointServer(() => _core.DeviceToken); await _server.StartAsync(); }
+                if (string.IsNullOrWhiteSpace(_server.Address)) throw new InvalidOperationException("No Xbox LAN address for local playback.");
+                if (!client.HasDeviceCredential) await client.PairDeviceAsync(XboxIdentity.EndpointId);
+                if (context != _context) return;
+                await client.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address);
+                _heartbeat.Start();
+            }
+            catch (Exception ex) { if (context == _context) Toast("Connected to Core; Xbox output pairing: " + ex.Message); }
+            var outputs = await client.RequestAsync("/api/v1/endpoints");
+            if (context != _context) return;
+            SetOutputs(outputs);
+            ConnectionText.Text = "R1 revision 29 · Core connected";
+            CoreAddressText.Text = client.BaseUrl;
             SetupPanel.Visibility = Visibility.Collapsed;
-            ShellPanel.Visibility = Visibility.Visible;
-            ConfigureEdition();
-            UpdateSettings();
-            UpdatePlaybackUi();
-            ShowContent(MusicPanel);
-            _serviceRefresh.Start();
-
-            ConnectionText.Text = _nativeCore.Ready
-                ? "Standalone Xbox Core ready"
-                : "Standalone Xbox Core starting";
-            OutputText.Text =
-                PlaybackService.Instance.AudioOutputName;
-            FooterOutputText.Text =
-                PlaybackService.Instance.AudioOutputName;
-            MusicNavButton.Focus(FocusState.Programmatic);
+            Shell.Visibility = Visibility.Visible;
+            await NavigateAsync("Home");
         }
 
-        void ShowContent(UIElement panel)
+        void ShowSetup(string message)
         {
-            MusicPanel.Visibility = AlbumPanel.Visibility = QueuePanel.Visibility =
-                NowPlayingPanel.Visibility = RipPanel.Visibility = SettingsPanel.Visibility = Visibility.Collapsed;
-            panel.Visibility = Visibility.Visible;
+            Shell.Visibility = Visibility.Collapsed;
+            SetupPanel.Visibility = Visibility.Visible;
+            SetupStatus.Text = message;
+            ConnectionText.Text = "Connect to your existing Core";
         }
 
-        void Toast(string message)
+        void SetOutputs(JsonObject root)
         {
-            ToastText.Text = message ?? "";
-            ToastBorder.Visibility = Visibility.Visible;
-            _toastTimer.Stop();
-            _toastTimer.Start();
+            _updatingOutput = true;
+            OutputPicker.Items.Clear();
+            var ids = new HashSet<string>();
+            if (root.ContainsKey("endpoints")) foreach (var value in root.GetNamedArray("endpoints"))
+            {
+                if (value.ValueType != JsonValueType.Object) continue;
+                var row = value.GetObject(); var id = Text(row, "id");
+                if (id.Length == 0 || !ids.Add(id) || (row.ContainsKey("online") && !row.GetNamedBoolean("online", true))) continue;
+                OutputPicker.Items.Add(new ComboBoxItem { Content = Text(row, "name", id), Tag = id });
+            }
+            object saved;
+            var preferred = _settings.Values.TryGetValue("xbox.control.preferredOutput:" + _core.BaseUrl, out saved) ? saved as string : "";
+            var items = OutputPicker.Items.Cast<ComboBoxItem>().ToList();
+            var selected = items.FirstOrDefault(i => (string)i.Tag == preferred) ??
+                items.FirstOrDefault(i => (string)i.Tag == XboxIdentity.EndpointId) ?? items.FirstOrDefault();
+            OutputPicker.SelectedItem = selected;
+            _endpoint = selected?.Tag as string ?? "";
+            _updatingOutput = false;
         }
 
-        string ReadSetting(string key)
+        async void Output_Changed(object sender, SelectionChangedEventArgs e)
         {
-            object value;
-            return _settings.Values.TryGetValue(key, out value) ? value as string ?? "" : "";
+            if (_updatingOutput) return;
+            _endpoint = (OutputPicker.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+            if (_endpoint.Length > 0) _settings.Values["xbox.control.preferredOutput:" + _core.BaseUrl] = _endpoint;
+            await PollAsync();
         }
 
-        static string FormatDuration(double seconds)
+        async void Navigate_Click(object sender, RoutedEventArgs e) => await NavigateAsync((sender as Button)?.Tag as string ?? "Home");
+        async void Refresh_Click(object sender, RoutedEventArgs e) => await NavigateAsync(_section, true);
+
+        async Task NavigateAsync(string section, bool refresh = false)
         {
-            var span = TimeSpan.FromSeconds(Math.Max(0, seconds));
-            return span.TotalHours >= 1
-                ? ((int)span.TotalHours).ToString("0") + ":" +
-                  span.Minutes.ToString("00") + ":" +
-                  span.Seconds.ToString("00")
-                : span.Minutes.ToString("0") + ":" +
-                  span.Seconds.ToString("00");
+            if (!_core.HasSavedLogin) return;
+            var context = _context; var operation = ++_operation; var client = _core;
+            _section = section; _album = null;
+            Heading.Text = section;
+            PlayingPanel.Visibility = section == "Playing" ? Visibility.Visible : Visibility.Collapsed;
+            SettingsPanel.Visibility = section == "Settings" ? Visibility.Visible : Visibility.Collapsed;
+            Cards.Visibility = section == "Playing" || section == "Settings" ? Visibility.Collapsed : Visibility.Visible;
+            AlbumPanel.Visibility = Visibility.Collapsed;
+            VideoPanel.Visibility = Visibility.Collapsed;
+            EmptyText.Visibility = Visibility.Collapsed;
+            Filters.Visibility = section == "Playing" || section == "Settings" ? Visibility.Collapsed : Visibility.Visible;
+            CollectionPicker.Visibility = section == "Your Music" ? Visibility.Visible : Visibility.Collapsed;
+            SpokenPicker.Visibility = section == "Spoken Word" ? Visibility.Visible : Visibility.Collapsed;
+            BandPicker.Visibility = section == "Videos" ? Visibility.Visible : Visibility.Collapsed;
+            _sectionCards = new List<MediaCard>();
+            Cards.ItemsSource = null;
+            try
+            {
+                if (section == "Playing") { await PollAsync(); return; }
+                if (section == "Settings") return;
+                if (section == "Home" || section == "Your Music")
+                {
+                    if (refresh) { var albums = await client.PublishedMusicAsync(); if (context != _context || operation != _operation) return; _albums = albums; }
+                    var rows = section == "Home" ? _albums.Where(a => a.Collection == "albums").Take(16) :
+                        _albums.Where(a => a.Collection == ((CollectionPicker.SelectedItem as ComboBoxItem)?.Tag as string ?? "albums"));
+                    _sectionCards = rows.Select(a => new MediaCard { Id = a.Id, Kind = "album", Album = a,
+                        Title = a.Title, Artist = a.Artist, Meta = a.Meta,
+                        ArtworkPath = a.HasArtwork ? "/api/v1/library/catalogue/albums/" + Uri.EscapeDataString(a.Id) + "/artwork" : null }).ToList();
+                }
+                else if (section == "Streaming")
+                {
+                    var radio = await client.RadioAsync();
+                    if (context != _context || operation != _operation) return;
+                    _sectionCards = radio; Heading.Text = "Streaming · Radio · " + client.RadioSource;
+                }
+                else if (section == "Videos")
+                {
+                    var videos = await client.VideosAsync();
+                    if (context != _context || operation != _operation) return;
+                    _videos = videos;
+                    var selected = BandPicker.SelectedItem as string;
+                    BandPicker.ItemsSource = new[] { "All bands" }.Concat(videos.Select(v => v.Artist).Distinct()).ToList();
+                    BandPicker.SelectedItem = selected != null && BandPicker.Items.Contains(selected) ? selected : "All bands";
+                    _sectionCards = videos;
+                }
+                else if (section == "Spoken Word")
+                {
+                    var spoken = await client.SpokenAsync(SpokenPicker.SelectedIndex == 1);
+                    if (context != _context || operation != _operation) return;
+                    _sectionCards = spoken;
+                }
+                if (context != _context || operation != _operation) return;
+                ApplyFilter();
+                await LoadArtworkAsync(client, _sectionCards, context, operation);
+            }
+            catch (Exception ex) { if (context == _context && operation == _operation) { EmptyText.Text = ex.Message + " · Refresh to retry."; EmptyText.Visibility = Visibility.Visible; } }
         }
 
-        sealed class BluRayTitleOption
+        async Task LoadArtworkAsync(CoreClient client, IEnumerable<MediaCard> cards, long context, long operation)
         {
-            public string Playlist { get; set; }
-            public string Label { get; set; }
+            foreach (var card in cards)
+            {
+                if (context != _context || operation != _operation) return;
+                try { await client.LoadArtworkAsync(card); } catch { /* A cover failure cannot delay playback or replace metadata. */ }
+            }
         }
 
-        static string JsonString(Windows.Data.Json.JsonObject obj, string key, string fallback = "")
+        void ApplyFilter()
         {
-            return obj != null && obj.ContainsKey(key) &&
-                   obj[key].ValueType == Windows.Data.Json.JsonValueType.String
-                ? obj[key].GetString()
-                : fallback;
+            var query = SearchBox?.Text ?? "";
+            var band = BandPicker?.SelectedItem as string;
+            var rows = _sectionCards.Where(c => (c.Title + " " + c.Artist + " " + c.Meta).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                (_section != "Videos" || band == null || band == "All bands" || c.Artist == band)).ToList();
+            Cards.ItemsSource = rows;
+            EmptyText.Text = "Nothing in this part of your Core library yet.";
+            EmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void Search_Changed(object sender, TextChangedEventArgs e) { if (Cards != null) ApplyFilter(); }
+        async void Filter_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (Cards == null || !_initialised) return;
+            if (sender == BandPicker) ApplyFilter(); else await NavigateAsync(_section);
         }
 
-        static double JsonNumber(Windows.Data.Json.JsonObject obj, string key, double fallback)
+        async void Card_Click(object sender, ItemClickEventArgs e)
         {
-            return obj != null && obj.ContainsKey(key) &&
-                   obj[key].ValueType == Windows.Data.Json.JsonValueType.Number
-                ? obj[key].GetNumber()
-                : fallback;
+            var card = e.ClickedItem as MediaCard;
+            if (card == null) return;
+            if (card.Kind == "video") { await PlayVideoAsync(card); return; }
+            if (card.Kind == "album") { ShowAlbum(card.Album); return; }
+            var client = _core; var endpoint = _endpoint; var context = _context;
+            if (card.Kind == "podcast")
+            {
+                try { var episodes = await client.EpisodesAsync(card.Id); if (context != _context) return; _sectionCards = episodes; ApplyFilter(); }
+                catch (Exception ex) { Toast(ex.Message); }
+                return;
+            }
+            await CommandAsync(async () => {
+                RequireEndpoint(endpoint);
+                if (card.Kind == "radio") await client.PlayRadioAsync(card, endpoint);
+                else if (card.Kind == "episode") await client.PlayEpisodeAsync(card, endpoint);
+                else await client.PlayTracksAsync(endpoint, new[] { new CoreTrack { ItemId = card.Id, Title = card.Title } }, false);
+            });
         }
 
-        static bool JsonBool(Windows.Data.Json.JsonObject obj, string key)
+        void ShowAlbum(CoreAlbum album)
         {
-            return obj != null && obj.ContainsKey(key) &&
-                   obj[key].ValueType == Windows.Data.Json.JsonValueType.Boolean &&
-                   obj[key].GetBoolean();
+            _album = album;
+            Cards.Visibility = Visibility.Collapsed; Filters.Visibility = Visibility.Collapsed;
+            EmptyText.Visibility = Visibility.Collapsed; AlbumPanel.Visibility = Visibility.Visible;
+            AlbumTitle.Text = album.Artist + " · " + album.Title;
+            EditionPicker.ItemsSource = album.Editions; EditionPicker.SelectedIndex = album.Editions.Count > 0 ? 0 : -1;
+            Tracks.ItemsSource = SelectedTracks();
+        }
+        IList<CoreTrack> SelectedTracks() => (EditionPicker.SelectedItem as CoreEdition)?.Tracks ?? _album?.Tracks ?? new List<CoreTrack>();
+        void Edition_Changed(object sender, SelectionChangedEventArgs e) { if (Tracks != null) Tracks.ItemsSource = SelectedTracks(); }
+        async void AlbumBack_Click(object sender, RoutedEventArgs e) => await NavigateAsync(_section);
+        async void PlayAlbum_Click(object sender, RoutedEventArgs e) => await PlayTracksAsync(SelectedTracks(), false);
+        async void AppendAlbum_Click(object sender, RoutedEventArgs e) => await PlayTracksAsync(SelectedTracks(), true);
+        async void Track_Click(object sender, ItemClickEventArgs e) => await PlayTracksAsync(new[] { (CoreTrack)e.ClickedItem }, false);
+        async void TrackPlay_Click(object sender, RoutedEventArgs e) => await PlayTracksAsync(new[] { (CoreTrack)((Button)sender).Tag }, false);
+        async void TrackAppend_Click(object sender, RoutedEventArgs e) => await PlayTracksAsync(new[] { (CoreTrack)((Button)sender).Tag }, true);
+        async Task PlayTracksAsync(IList<CoreTrack> tracks, bool append)
+        {
+            var client = _core; var endpoint = _endpoint;
+            await CommandAsync(async () => { RequireEndpoint(endpoint); await client.PlayTracksAsync(endpoint, tracks, append); });
+            if (tracks.Count > 0 && !append) { FooterTitle.Text = tracks[0].Title + " · " + tracks[0].Artist; }
         }
 
-        void WriteSetting(string key, string value)
+        async Task PlayVideoAsync(MediaCard card)
         {
-            _settings.Values[key] = value ?? "";
+            if (_videoOpening || _videoId == card.Id) return;
+            if (!card.Available || !card.Approved) { Toast("This video is not available for playback on Core."); return; }
+            var context = _context; var operation = ++_operation; var client = _core;
+            _videoOpening = true;
+            try
+            {
+                var url = await client.VideoStreamAsync(card, CompatibleVideo.IsChecked != false);
+                if (context != _context || operation != _operation) return;
+                _videoId = card.Id;
+                PlaybackService.Instance.PlayUrl(url, new JsonObject { ["title"] = JsonValue.CreateStringValue(card.Title),
+                    ["artist"] = JsonValue.CreateStringValue(card.Artist), ["album"] = JsonValue.CreateStringValue(card.Meta ?? "") }, 0.7, 0);
+                Cards.Visibility = Visibility.Collapsed; Filters.Visibility = Visibility.Collapsed;
+                VideoPanel.Visibility = Visibility.Visible;
+                VideoMetadata.Text = card.Artist + " · " + card.Title + "\n" + card.Meta;
+            }
+            catch (Exception ex) { if (context == _context) Toast("Stream unavailable: " + ex.Message); }
+            finally { _videoOpening = false; }
         }
+        async void VideoBack_Click(object sender, RoutedEventArgs e)
+        {
+            _operation++; _videoId = ""; PlaybackService.Instance.Stop(); await NavigateAsync("Videos");
+        }
+
+        async Task HeartbeatAsync()
+        {
+            var client = _core; var context = _context;
+            if (_server == null || !client.HasDeviceCredential) return;
+            try { await client.RegisterEndpointAsync(XboxIdentity.EndpointId, XboxIdentity.FriendlyName, _server.Address); }
+            catch { if (context == _context) ConnectionText.Text = "Core connection interrupted"; }
+        }
+        async Task PollAsync()
+        {
+            if (_pollBusy || !_core.HasSavedLogin || _endpoint.Length == 0) return;
+            _pollBusy = true;
+            var context = _context; var endpoint = _endpoint; var client = _core;
+            try
+            {
+                PlaybackSnapshot state;
+                if (endpoint == XboxIdentity.EndpointId) state = PlaybackService.Instance.Snapshot();
+                else
+                {
+                    var root = await client.RequestAsync("/api/v1/endpoints/" + Uri.EscapeDataString(endpoint) + "/status");
+                    state = new PlaybackSnapshot { State = Text(root, "state"), Playing = root.GetNamedBoolean("playing", false),
+                        Title = Text(root, "title"), Artist = Text(root, "artist"), Album = Text(root, "album"),
+                        PositionSeconds = Number(root, "position_seconds"), DurationSeconds = Number(root, "duration_seconds"),
+                        Volume = Number(root, "volume"), Muted = root.GetNamedBoolean("muted", false) };
+                }
+                if (context != _context || endpoint != _endpoint) return;
+                _updatingPlayback = true;
+                PlayingTitle.Text = string.IsNullOrWhiteSpace(state.Title) ? "Nothing playing" : state.Title;
+                PlayingArtist.Text = string.Join(" · ", new[] { state.Artist, state.Album }.Where(v => !string.IsNullOrWhiteSpace(v)));
+                PlayingState.Text = state.State;
+                PlayButton.Content = state.Playing ? "Pause" : "Play"; PlayButton.Tag = state.Playing ? "pause" : "resume";
+                Seek.Maximum = Math.Max(1, state.DurationSeconds); Seek.IsEnabled = state.DurationSeconds > 0;
+                if (!_seekEditing) Seek.Value = Math.Max(0, Math.Min(Seek.Maximum, state.PositionSeconds));
+                Volume.Value = Math.Max(0, Math.Min(100, state.Volume));
+                TimeText.Text = Duration(state.PositionSeconds) + " / " + Duration(state.DurationSeconds);
+                if (!string.IsNullOrWhiteSpace(state.Title)) FooterTitle.Text = state.Title + " · " + state.Artist;
+                var cover = _sectionCards.FirstOrDefault(c => c.Title == state.Album);
+                if (cover != null) PlayingArtwork.Source = cover.Artwork;
+                _updatingPlayback = false;
+                if (_section == "Playing")
+                {
+                    var queue = await client.QueueAsync(endpoint);
+                    if (context == _context && endpoint == _endpoint) QueueList.ItemsSource = queue;
+                }
+            }
+            catch (Exception ex) { if (_section == "Playing" && context == _context) PlayingState.Text = "Core status unavailable · " + ex.Message; }
+            finally { _updatingPlayback = false; _pollBusy = false; }
+        }
+
+        async Task CommandAsync(Func<Task> action)
+        {
+            var context = _context;
+            try { await action(); if (context == _context) await PollAsync(); }
+            catch (Exception ex) { if (context == _context) Toast(ex.Message); }
+        }
+        static void RequireEndpoint(string id) { if (string.IsNullOrWhiteSpace(id)) throw new InvalidOperationException("Choose a speaker first."); }
+        async void Transport_Click(object sender, RoutedEventArgs e)
+        {
+            var client = _core; var endpoint = _endpoint; var action = (sender as Button)?.Tag as string;
+            await CommandAsync(async () => { RequireEndpoint(endpoint); await client.ControlAsync(endpoint, action); });
+        }
+        async void FooterPlay_Click(object sender, RoutedEventArgs e)
+        {
+            var action = PlayButton.Tag as string ?? "resume"; var client = _core; var endpoint = _endpoint;
+            await CommandAsync(async () => { RequireEndpoint(endpoint); await client.ControlAsync(endpoint, action); });
+        }
+        async void ClearQueue_Click(object sender, RoutedEventArgs e)
+        {
+            var client = _core; var endpoint = _endpoint;
+            await CommandAsync(async () => { RequireEndpoint(endpoint); await client.ClearQueueAsync(endpoint); });
+        }
+        async void Seek_Changed(object sender, Windows.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        {
+            if (_updatingPlayback || !_initialised || _endpoint.Length == 0) return;
+            var op = ++_seekOperation; var context = _context; var client = _core; var endpoint = _endpoint; var value = e.NewValue;
+            _seekEditing = true;
+            await Task.Delay(400);
+            if (op != _seekOperation || context != _context || endpoint != _endpoint) return;
+            await CommandAsync(async () => await client.RequestAsync("/api/v1/playback/" + Uri.EscapeDataString(endpoint) +
+                "/control/seek?position_seconds=" + value.ToString(System.Globalization.CultureInfo.InvariantCulture), "POST"));
+            _seekEditing = false;
+        }
+        async void Volume_Changed(object sender, Windows.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        {
+            if (_updatingPlayback || !_initialised || _endpoint.Length == 0) return;
+            var op = ++_volumeOperation; var context = _context; var client = _core; var endpoint = _endpoint; var value = (int)e.NewValue;
+            await Task.Delay(300);
+            if (op != _volumeOperation || context != _context || endpoint != _endpoint) return;
+            await CommandAsync(async () => await client.RequestAsync("/api/v1/playback/" + Uri.EscapeDataString(endpoint) + "/volume?volume=" + value, "POST"));
+        }
+        async void Mute_Click(object sender, RoutedEventArgs e)
+        {
+            var client = _core; var endpoint = _endpoint;
+            var mute = !(PlaybackService.Instance.Snapshot().Muted);
+            await CommandAsync(async () => { RequireEndpoint(endpoint); await client.RequestAsync("/api/v1/playback/" + Uri.EscapeDataString(endpoint) + "/mute?muted=" + mute.ToString().ToLowerInvariant(), "POST"); });
+        }
+        void Forget_Click(object sender, RoutedEventArgs e)
+        {
+            _context++; _operation++; _heartbeat.Stop(); _core.Forget();
+            _albums.Clear(); _videos.Clear(); _sectionCards.Clear(); _endpoint = ""; _videoId = "";
+            Cards.ItemsSource = null; QueueList.ItemsSource = null; VideoPanel.Visibility = Visibility.Collapsed;
+            PlaybackService.Instance.Stop(); ShowSetup("");
+        }
+        async void Page_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == VirtualKey.GamepadView) { e.Handled = true; await NavigateAsync("Playing"); }
+            else if (e.Key == VirtualKey.GamepadMenu) { e.Handled = true; await NavigateAsync("Settings"); }
+            else if (e.Key == VirtualKey.GamepadB || e.Key == VirtualKey.Escape)
+            {
+                e.Handled = true;
+                if (VideoPanel.Visibility == Visibility.Visible) VideoBack_Click(sender, new RoutedEventArgs());
+                else await NavigateAsync(_album != null ? "Your Music" : "Home");
+            }
+        }
+        void Toast(string text) { ToastText.Text = text; ToastBorder.Visibility = Visibility.Visible; _toast.Stop(); _toast.Start(); }
+        static string Text(JsonObject obj, string key, string fallback = "") => obj.ContainsKey(key) && obj[key].ValueType == JsonValueType.String ? obj[key].GetString() : fallback;
+        static double Number(JsonObject obj, string key) => obj.ContainsKey(key) && obj[key].ValueType == JsonValueType.Number ? obj[key].GetNumber() : 0;
+        static string Duration(double seconds) => TimeSpan.FromSeconds(Math.Max(0, seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss");
     }
 }

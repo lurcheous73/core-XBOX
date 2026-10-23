@@ -51,7 +51,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform" Version="6.2.14" />
-    <PackageReference Include="DiscUtils.Udf" Version="0.16.13" />
   </ItemGroup>
 
   <ItemGroup>
@@ -59,16 +58,7 @@
     <Compile Include="MainPage.xaml.cs"><DependentUpon>MainPage.xaml</DependentUpon></Compile>
     <Compile Include="Models\CoreModels.cs" />
     <Compile Include="Services\CoreClient.cs" />
-    <Compile Include="Services\StorageFileHttpContent.cs" />
-    <Compile Include="Services\XboxCoreRuntime.cs" />
-    <Compile Include="Services\CoreStackSupervisor.cs" />
-    <Compile Include="Services\NativeCatalogueService.cs" />
-    <Compile Include="Services\DiscMetadataService.cs" />
-    <Compile Include="Services\LocalCoreApiServer.cs" />
-    <Compile Include="Services\OpticalProbeService.cs" />
-    <Compile Include="Services\BluRayAudioService.cs" />
-    <Compile Include="Services\ScsiOpticalStream.cs" />
-    <Compile Include="Services\CdRipService.cs" />
+    <Compile Include="Services\CoreClient.R29.cs" />
     <Compile Include="Services\EndpointServer.cs" />
     <Compile Include="Services\PlaybackService.cs" />
     <Compile Include="Services\XboxIdentity.cs" />
@@ -82,6 +72,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Assets\Brand.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\Square44x44Logo.scale-200.png" />

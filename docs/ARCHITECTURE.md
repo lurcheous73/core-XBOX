@@ -1,79 +1,26 @@
-# Brimstone Core for Xbox - architecture
+# Xbox Control R1 architecture
 
-## Product role
+Core owns authentication, catalogue, personal subscriptions, queues, providers,
+stream tickets and optional compatible video conversion. Xbox owns its native
+controller UI, MediaPlayer rendering and authenticated Core-End listener.
 
-The Xbox build is a supported Brimstone renderer and 10-foot Control surface.
+There is no Xbox-hosted Core API, local database, scanner, ripper or supervisor.
+Only the Core-End renderer listener remains, on its existing authenticated port
+8095. It requires the paired device credential and is distinct from Core's API.
 
-Core remains authoritative for authentication, device trust, library/catalogue
-data, provider credentials, metadata, artwork, ripping/ingest and signed
-playback stream URLs.
+The package keeps its existing identity and app-data location. Legacy bearer
+credentials migrate to PasswordVault; reconnecting/signing out invalidates the
+visible connection context. Late catalogue responses cannot replace another
+Core's screen. Transport writes are issued once, without retry fallback.
 
-Xbox owns the controller-first TV UI, Xbox audio playback, background media
-playback, the local endpoint control listener and supported optical capability
-probing.
+Music uses the published R1 collections with a consistent publication revision,
+opaque item IDs and exact variants. Native Sooloos queue writes omit NAS variants
+so Core can resolve the selected broker's native copy and require confirmation.
+Radio uses favourites → recent → popular and registers the chosen stream with
+Core before requesting playback. A failed favourites request is not treated as
+an empty list. Video tickets must be relative, bind the exact recording and
+contain a temporary token; account bearer tokens are never placed in player URLs.
 
-## Trust and pairing
-
-Xbox uses the existing Core device-trust contract:
-
-1. Sign into Core.
-2. Request a one-time pairing code for role `core-end`.
-3. Exchange it using the stable Xbox device ID.
-4. Store the returned per-device endpoint credential.
-5. Register at `/api/v1/endpoints/register`.
-6. Core uses that credential for Xbox endpoint control.
-
-The endpoint ID comes from `SystemIdentification.GetSystemIdForPublisher()`
-so rebooting the console does not create another Brimstone output.
-
-## Endpoint protocol
-
-The Xbox listener mirrors the normal Core End v1 surface:
-
-- `GET /v1/capabilities`
-- `GET /v1/status`
-- `POST /v1/prepare`
-- `POST /v1/start`
-- `POST /v1/play`
-- `POST /v1/programme`
-- `POST /v1/pause`
-- `POST /v1/resume`
-- `POST /v1/seek`
-- `POST /v1/stop`
-
-Development listener port: `8095/tcp`.
-
-## Background audio
-
-Playback uses `Windows.Media.Playback.MediaPlayer` and the package declares
-`backgroundMediaPlayback`. The build is audio-first and deliberately does not
-request Xbox 4K-video capabilities.
-
-## Controller model
-
-Normal XAML XY focus handles D-pad/left-stick navigation and A/Select.
-
-Brimstone adds:
-
-- View -> Now Playing
-- Menu -> Settings
-- B -> back from album detail
-
-## Optical strategy
-
-The package declares Microsoft's documented `optical` device capability, but
-Beta 1 does not assume the Xbox One X internal UHD drive exposes raw audio data.
-
-Production rule:
-
-- supported Microsoft APIs only;
-- feature-detect on real Xbox hardware;
-- no undocumented interfaces, exploits or console modification;
-- if useful local optical access is unavailable, a drive attached to normal
-  Brimstone Core performs the rip and Xbox/iPad Control operates the job.
-
-## Audio output
-
-Audio is rendered through the Xbox system audio stack. HDMI/S/PDIF selection and
-format negotiation remain Xbox system settings. We do not call the Xbox path
-bit-perfect until it has been measured on real hardware.
+The iOS-derived visual system uses a 1600×900 TV design canvas, safe margins,
+large cover tiles, controller focus and separate Playing/queue columns. Display
+scaling is separate from verification of a decoder's actual output resolution.

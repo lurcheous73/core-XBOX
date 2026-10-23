@@ -1,48 +1,49 @@
-# Brimstone Core for Xbox
+# Brimstone Xbox Control — R1 revision 29
 
-Brimstone's supported Xbox client / renderer for Xbox One X (including Project Scorpio) and compatible Xbox consoles.
+Xbox is a Control client and streaming renderer for an existing Brimstone Core.
+This candidate replaces the former standalone Xbox Core. It uses the same purple
+Brimstone identity, cover tiles and Home / Playing / Your Music / Streaming /
+Spoken Word / Videos / Settings structure as the current iOS Control.
 
-## Beta 1 goals
+## R1 behaviour
 
-- Native 10-foot Brimstone UI designed for Xbox controllers
-- Connect to an existing Brimstone Core over the local network
-- Browse the Core music library and artwork
-- Play Core-hosted music through the Xbox audio stack
-- Background audio so music can continue while a game is running
-- System Media Transport Controls integration
-- Register the Xbox with Core as a network playback endpoint so iPad/macOS/Windows Control can target it
-- HDMI / console-selected audio output; Xbox One X S/PDIF remains selectable through Xbox system audio settings
-- Supported Microsoft APIs only: no exploits, console modification, unsigned retail code or DRM bypass
-- Optical-disc capability probe. If Xbox permits supported access to music media, expose it; otherwise ripping remains on the main Core and is controlled from Xbox/Control.
+- Published Core collections retain exact catalogue item and variant identities.
+  Bootlegs are a Your Music submenu and never populate Home.
+- Playing includes transport, speaker selection, seek, volume and Clear queue.
+  Play and Add to queue are separate operations; append never replays an album.
+- Radio follows Core favourites, recent, then popular in Core order, with metadata.
+- Videos have band filters, artwork and recording metadata. Select a tile to play
+  a temporary Core stream. Compatible delivery can be supplied by Core; no movie
+  download or local media cache is created by Control.
+- Personal podcasts and audiobooks stay on the authenticated Core account.
+- The Xbox player retains background audio and authenticated Core-End pairing.
+  Audio routing follows Xbox system settings, including HDMI/optical where
+  supported. The tvOS-only HDMI restriction is not copied to other clients.
+- Normal XAML focus supports controllers. View opens Playing, Menu opens Settings,
+  and B goes back. The safe-area 16:9 canvas scales for 1080p and 4K displays.
 
-## Architecture
+## Xbox Core retired
 
-```
-Brimstone Core
-    |
-    | HTTPS / authenticated Core API
-    |
-Xbox Core
-    |-- 10-foot controller UI
-    |-- MediaPlayer background renderer
-    |-- Core endpoint registration
-    |-- System Media Transport Controls
-    `-- optional supported optical capability probe
+The native Core runtime, supervisor, local catalogue/database, local Core API,
+optical probing, CD/Blu-ray ingestion and their dependencies have been removed
+from the application. No local administrator is generated and no Core is started.
+The existing package identity and LocalFolder are retained so this change does
+not erase an installed application's data. Previous server code is available in
+Git history; its old runtime notes are under `docs/archive/`.
 
-iPad / macOS / Windows Control
-    |
-    `---- controls Core ----> Xbox endpoint
-```
+User and endpoint credentials migrate from legacy settings into Windows
+PasswordVault. Public remote connections require HTTPS; HTTP remains available
+for explicit local-network Core addresses. No certificate-validation bypass is
+installed. An existing Core and valid account are required.
 
-The Xbox app deliberately does **not** contain provider credentials or duplicate the full Core database. Core remains the source of truth.
+## Builds and acceptance
 
-## Development target
+Development package version: **2.5.0.0**, x64 UWP, minimum Windows/Xbox API 16299.
+The repository workflows compile XAML/C# and create Dev Mode packages on Windows.
+Dev packages are separately signed for development and are not a retail Store
+release. The existing Partner Center package identity is retained in Store
+packaging; it is not a second Core runtime.
 
-- UWP
-- C# / XAML
-- x64
-- Xbox One X / Project Scorpio first test hardware
-- Visual Studio 2022 + Windows 10 SDK
-- Developer Mode for local testing; Store packaging later
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/TESTING-XBOX.md](docs/TESTING-XBOX.md).
+Native compilation, package verification and physical console acceptance must
+be recorded separately. Do not claim measured audio, 4K decoding or Xbox
+controller acceptance from source inspection or desktop tests alone.
