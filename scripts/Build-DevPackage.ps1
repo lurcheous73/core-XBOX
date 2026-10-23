@@ -1,7 +1,8 @@
+param([string]$OutputRoot = "")
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$out = Join-Path $root "dist\xbox-dev"
+$out = if ($OutputRoot) { $OutputRoot } else { Join-Path $root "dist\xbox-dev" }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
 $certArgs = @{

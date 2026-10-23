@@ -1,642 +1,158 @@
-<Page
-    x:Class="BrimstoneXbox.MainPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:models="using:BrimstoneXbox.Models"
-    Background="{StaticResource BrimstoneBackground}"
-    UseLayoutRounding="True"
-    KeyDown="Page_KeyDown">
-
-    <Page.Resources>
-        <DataTemplate x:Key="AlbumRailTemplate" x:DataType="models:CoreAlbum">
-            <Border Width="184" Height="220" Margin="6" CornerRadius="12"
-                    Background="#191920" BorderBrush="#34313D" BorderThickness="1">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="160"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <Border Margin="8,8,8,0" CornerRadius="10" Background="#2A2035">
-                        <Grid>
-                            <TextBlock Text="◉" FontSize="50" Foreground="#A47AFF"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            <Image Source="{x:Bind Artwork}" Stretch="UniformToFill"/>
-                            <Border Background="#C20A0A0D" VerticalAlignment="Bottom" Padding="9,5">
-                                <TextBlock Text="{x:Bind Artist}" FontSize="11"
-                                           TextTrimming="CharacterEllipsis"/>
-                            </Border>
-                        </Grid>
-                    </Border>
-                    <StackPanel Grid.Row="1" Margin="12,9,12,8">
-                        <TextBlock Text="{x:Bind Title}" FontSize="15" FontWeight="SemiBold"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{x:Bind Meta}" FontSize="11"
-                                   Foreground="{StaticResource BrimstoneMuted}" Margin="0,2,0,0"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
-        </DataTemplate>
-    </Page.Resources>
-
-    <Viewbox Stretch="Uniform" StretchDirection="Both">
-        <Grid Width="1600" Height="900" Background="{StaticResource BrimstoneBackground}">
-            <!-- 16:9 TV design canvas. Viewbox scales exactly to 1920x1080 and 3840x2160;
-                 primary shell content retains ~3% horizontal safe-area inset. -->
-
-            <!-- First run: appliance personality only. -->
-            <Grid x:Name="FirstRunPanel" Visibility="Collapsed" Background="#09090C">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="1320">
-                    <TextBlock Text="BRIMSTONE CORE" FontSize="26" FontWeight="Bold" Foreground="{StaticResource BrimstoneAccent}"
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Text="Standalone Xbox Core" FontSize="52" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" Margin="0,14,0,10"/>
-                    <TextBlock Text="Local library, ripping, playback and Core API in one Xbox appliance."
-                               FontSize="22" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Center"/>
-                    <Grid Margin="0,54,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="34"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Button x:Name="CoreEditionButton" Grid.Column="0" Click="CoreEditionButton_Click"
-                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0"
-                                Background="Transparent" BorderThickness="0">
-                            <Border Height="310" Background="#181820" BorderBrush="#57416E" BorderThickness="2"
-                                    CornerRadius="24" Padding="34">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="*"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <Border Width="76" Height="76" CornerRadius="18" Background="{StaticResource BrimstoneAccent}"
-                                            HorizontalAlignment="Left">
-                                        <TextBlock Text="B" FontSize="44" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
-                                        <TextBlock Text="STANDALONE CORE" FontSize="42" FontWeight="Bold"/>
-                                        <TextBlock Text="Full Brimstone library, queue, playback and disc ingest."
-                                                   FontSize="21" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                    </StackPanel>
-                                    <TextBlock Grid.Row="2" Text="xbox-core.local" FontSize="18" Foreground="#D7C4FF"/>
-                                </Grid>
-                            </Border>
-                        </Button>
-
-                        
-                    </Grid>
-                </StackPanel>
-            </Grid>
-
-            <!-- One-time connection screen after personality selection. -->
-            <Grid x:Name="SetupPanel" Visibility="Collapsed" Background="#09090C">
-                <Grid Margin="110,70">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <StackPanel>
-                        <Button Content="← Back" HorizontalAlignment="Left" Click="SetupBackButton_Click"/>
-                        <TextBlock x:Name="SetupHeadingText" Text="Connect Brimstone Core" FontSize="48" FontWeight="SemiBold" Margin="0,22,0,8"/>
-                        <TextBlock x:Name="SetupHelpText" FontSize="21" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"
-                                   Text="Connect once, then this Xbox boots straight into music."/>
-                    </StackPanel>
-
-                    <Border Grid.Row="1" Background="#17171D" BorderBrush="#34313D" BorderThickness="1"
-                            CornerRadius="24" Padding="36" Margin="0,34,0,0" MaxWidth="950" HorizontalAlignment="Left">
-                        <StackPanel Width="850">
-                            <StackPanel x:Name="CoreSetupFields">
-                                <TextBlock Text="Core address" FontSize="18" Foreground="{StaticResource BrimstoneMuted}"/>
-                                <TextBox x:Name="CoreUrlBox" Text="http://10.26.30.20:8080" Margin="0,7,0,14"/>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="1*"/>
-                                        <ColumnDefinition Width="22"/>
-                                        <ColumnDefinition Width="1*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="Username" FontSize="18" Foreground="{StaticResource BrimstoneMuted}"/>
-                                        <TextBox x:Name="UsernameBox" Text="admin" Margin="0,7,0,0"/>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Password" FontSize="18" Foreground="{StaticResource BrimstoneMuted}"/>
-                                        <PasswordBox x:Name="PasswordBox" PasswordRevealMode="Peek" Margin="0,7,0,0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </StackPanel>
-
-                            
-
-                            <Button x:Name="SetupConnectButton" Content="Connect" Background="{StaticResource BrimstoneAccent}"
-                                    HorizontalAlignment="Left" MinWidth="220" Margin="0,28,0,0" Click="SetupConnectButton_Click"/>
-                            <TextBlock x:Name="SetupStatusText" FontSize="18" Foreground="{StaticResource BrimstoneMuted}"
-                                       TextWrapping="Wrap" Margin="0,18,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </Grid>
-            </Grid>
-
-            <!-- Everyday TV shell: use music, don't administer servers. -->
-            <Grid x:Name="ShellPanel" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="72"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="84"/>
-                </Grid.RowDefinitions>
-
-                <Grid Grid.Row="0" Background="#0C0C10" Padding="34,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="28"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="40" Height="40" CornerRadius="10" Background="{StaticResource BrimstoneAccent}" Margin="0,0,13,0">
-                            <TextBlock Text="B" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="BRIMSTONE CORE" FontSize="17" FontWeight="Bold"/>
-                            <TextBlock x:Name="EditionBadgeText" Text="CORE · XBOX" FontSize="11" Foreground="#B995FF"/>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="MusicNavButton" Content="Your Music" Click="MusicNavButton_Click"/>
-                        <Button x:Name="QueueNavButton" Content="Queue" Click="QueueNavButton_Click"/>
-                        <Button x:Name="NowNavButton" Content="Now Playing" Click="NowNavButton_Click"/>
-                        <Button x:Name="RipNavButton" Content="Rip Disc" Click="RipNavButton_Click"/>
-                        <Button x:Name="SettingsNavButton" Content="Settings" Click="SettingsNavButton_Click"/>
-                    </StackPanel>
-
-                    <Border Grid.Column="3" Background="#1A1A21" CornerRadius="10" Padding="12,7" VerticalAlignment="Center">
-                        <StackPanel>
-                            <TextBlock x:Name="OutputText" Text="Xbox" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Right"/>
-                            <TextBlock x:Name="ConnectionText" Text="Ready" FontSize="11" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Right"/>
-                        </StackPanel>
-                    </Border>
-                </Grid>
-
-                <Grid Grid.Row="1" Margin="36,20,36,16">
-                    <Grid x:Name="MusicPanel">
-                        <ScrollViewer VerticalScrollMode="Enabled"
-                                      VerticalScrollBarVisibility="Hidden"
-                                      HorizontalScrollMode="Disabled"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel>
-
-                                <!-- Hero: current playback, or the newest album when idle. -->
-                                <Border x:Name="HomeHeroBorder" Height="208" CornerRadius="18"
-                                        BorderBrush="#3C3448" BorderThickness="1" Margin="0,0,0,24">
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                            <GradientStop Color="#2B183D" Offset="0"/>
-                                            <GradientStop Color="#15151C" Offset="0.56"/>
-                                            <GradientStop Color="#0D0D12" Offset="1"/>
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="326"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <StackPanel Margin="30,22,18,22" VerticalAlignment="Center">
-                                            <TextBlock x:Name="HeroEyebrowText" Text="BRIMSTONE CORE"
-                                                       FontSize="14" FontWeight="Bold" Foreground="#C6A1FF"/>
-                                            <TextBlock x:Name="HeroTitleText" Text="Your Music"
-                                                       FontSize="38" FontWeight="SemiBold" TextWrapping="Wrap"
-                                                       MaxWidth="780" Margin="0,8,0,4"/>
-                                            <TextBlock x:Name="HeroArtistText" Text="Xbox Core is ready"
-                                                       FontSize="18" Foreground="{StaticResource BrimstoneMuted}"
-                                                       TextTrimming="CharacterEllipsis" MaxWidth="760"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                                <Button x:Name="HeroPlayButton" Content="▶  Play"
-                                                        MinWidth="145" Background="{StaticResource BrimstoneAccent}"
-                                                        Click="HeroPlayButton_Click"/>
-                                                <Button Content="Rip a CD" MinWidth="126"
-                                                        Click="HeroRipButton_Click"/>
-                                            </StackPanel>
-                                        </StackPanel>
-
-                                        <Grid Grid.Column="1">
-                                            <Rectangle>
-                                                <Rectangle.Fill>
-                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                                        <GradientStop Color="#FF0F0F14" Offset="0"/>
-                                                        <GradientStop Color="#000F0F14" Offset="0.45"/>
-                                                    </LinearGradientBrush>
-                                                </Rectangle.Fill>
-                                            </Rectangle>
-                                            <Border Width="184" Height="184" HorizontalAlignment="Right"
-                                                    VerticalAlignment="Center" Margin="0,0,22,0"
-                                                    CornerRadius="18" Background="#2A2035">
-                                                <Grid>
-                                                    <TextBlock Text="◉" FontSize="64" Foreground="#A47AFF"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <Image x:Name="HeroArtworkImage" Stretch="UniformToFill"/>
-                                                </Grid>
-                                            </Border>
-                                        </Grid>
-                                    </Grid>
-                                </Border>
-
-                                <StackPanel x:Name="ContinueSection" Visibility="Collapsed" Margin="0,0,0,22">
-                                    <TextBlock Text="Continue Listening" FontSize="22" FontWeight="SemiBold"
-                                               Margin="2,0,0,8"/>
-                                    <GridView x:Name="ContinueGrid" Height="230"
-                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
-                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
-                                              SelectionMode="None"
-                                              ScrollViewer.HorizontalScrollMode="Enabled"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                              ScrollViewer.VerticalScrollMode="Disabled"
-                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <GridView.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="230"/>
-                                            </ItemsPanelTemplate>
-                                        </GridView.ItemsPanel>
-                                    </GridView>
-                                </StackPanel>
-
-                                <StackPanel x:Name="RecentSection" Margin="0,0,0,22">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="Recently Added" FontSize="22" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="LibrarySummaryText" Text="Loading library…"
-                                                       FontSize="14" Foreground="{StaticResource BrimstoneMuted}"
-                                                       Margin="2,3,0,0"/>
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="Refresh" VerticalAlignment="Bottom"
-                                                Click="RefreshButton_Click"/>
-                                    </Grid>
-                                    <GridView x:Name="RecentlyAddedGrid" Height="230" Margin="-7,8,-7,0"
-                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
-                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
-                                              SelectionMode="None"
-                                              ScrollViewer.HorizontalScrollMode="Enabled"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                              ScrollViewer.VerticalScrollMode="Disabled"
-                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <GridView.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="230"/>
-                                            </ItemsPanelTemplate>
-                                        </GridView.ItemsPanel>
-                                    </GridView>
-                                </StackPanel>
-
-                                <StackPanel Margin="0,0,0,22">
-                                    <TextBlock Text="Your Albums" FontSize="22" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                                    <GridView x:Name="AlbumGrid" Height="230" Margin="-7,0,-7,0"
-                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
-                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
-                                              SelectionMode="None"
-                                              ScrollViewer.HorizontalScrollMode="Enabled"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                              ScrollViewer.VerticalScrollMode="Disabled"
-                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <GridView.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="230"/>
-                                            </ItemsPanelTemplate>
-                                        </GridView.ItemsPanel>
-                                    </GridView>
-                                </StackPanel>
-
-                                <StackPanel x:Name="RecentlyRippedSection" Margin="0,0,0,22">
-                                    <TextBlock Text="Recently Ripped" FontSize="22" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                                    <GridView x:Name="RecentlyRippedGrid" Height="230" Margin="-7,0,-7,0"
-                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
-                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
-                                              SelectionMode="None"
-                                              ScrollViewer.HorizontalScrollMode="Enabled"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                              ScrollViewer.VerticalScrollMode="Disabled"
-                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <GridView.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="230"/>
-                                            </ItemsPanelTemplate>
-                                        </GridView.ItemsPanel>
-                                    </GridView>
-                                </StackPanel>
-
-                                <StackPanel x:Name="FavouriteSection" Visibility="Collapsed" Margin="0,0,0,24">
-                                    <TextBlock Text="Favourites" FontSize="22" FontWeight="SemiBold" Margin="2,0,0,8"/>
-                                    <GridView x:Name="FavouritesGrid" Height="230" Margin="-7,0,-7,0"
-                                              ItemTemplate="{StaticResource AlbumRailTemplate}"
-                                              IsItemClickEnabled="True" ItemClick="AlbumGrid_ItemClick"
-                                              SelectionMode="None"
-                                              ScrollViewer.HorizontalScrollMode="Enabled"
-                                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                              ScrollViewer.VerticalScrollMode="Disabled"
-                                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <GridView.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1"
-                                                               ItemWidth="228" ItemHeight="230"/>
-                                            </ItemsPanelTemplate>
-                                        </GridView.ItemsPanel>
-                                    </GridView>
-                                </StackPanel>
-
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
-
-                    <Grid x:Name="AlbumPanel" Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="430"/>
-                            <ColumnDefinition Width="40"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Border Width="410" Height="410" CornerRadius="24" Background="#2A2035" VerticalAlignment="Top">
-                            <Grid>
-                                <TextBlock Text="◉" FontSize="132" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <Image x:Name="AlbumArtworkImage" Stretch="UniformToFill"/>
-                            </Grid>
-                        </Border>
-                        <Grid Grid.Column="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <Button Content="← Your Music" HorizontalAlignment="Left" Click="BackToLibraryButton_Click"/>
-                            <StackPanel Grid.Row="1" Margin="4,26,0,22">
-                                <TextBlock x:Name="AlbumTitleText" FontSize="48" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                <TextBlock x:Name="AlbumArtistText" FontSize="25" Foreground="{StaticResource BrimstoneMuted}" Margin="0,6,0,0"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                    <Button x:Name="PlayAlbumButton" Content="▶  Play album"
-                                            Background="{StaticResource BrimstoneAccent}"
-                                            HorizontalAlignment="Left" MinWidth="210"
-                                            Click="PlayAlbumButton_Click"/>
-                                    <Button x:Name="FavouriteAlbumButton" Content="♡  Favourite"
-                                            HorizontalAlignment="Left" MinWidth="180"
-                                            Click="FavouriteAlbumButton_Click"/>
-                                    <Button x:Name="SendToCoreButton" Content="⇧  Send to Core"
-                                            HorizontalAlignment="Left" MinWidth="180"
-                                            Click="SendToCoreButton_Click"/>
-                                    
-                                </StackPanel>
-                            </StackPanel>
-                            <ListView x:Name="TracksList" Grid.Row="2" IsItemClickEnabled="True" ItemClick="TracksList_ItemClick"
-                                      SelectionMode="None">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="models:CoreTrack">
-                                        <Grid Height="62" Padding="12,4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="{x:Bind Title}" FontSize="19" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="{x:Bind Artist}" FontSize="11" Foreground="{StaticResource BrimstoneMuted}"/>
-                                            </StackPanel>
-                                            <TextBlock Grid.Column="1" Text="{x:Bind DurationText}" FontSize="14"
-                                                       Foreground="{StaticResource BrimstoneMuted}" VerticalAlignment="Center"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                        </Grid>
-                    </Grid>
-
-                    <Grid x:Name="QueuePanel" Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="Queue" FontSize="38" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="QueueSummaryText" Text="What plays next" FontSize="16" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
-                        </StackPanel>
-                        <ListView x:Name="QueueList" Grid.Row="1" Margin="0,20,0,0" SelectionMode="None">
-                            <ListView.ItemTemplate>
-                                <DataTemplate x:DataType="models:QueueItem">
-                                    <Grid Height="68" Padding="14,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="52"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{x:Bind Number}" Foreground="#B995FF" FontSize="18" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{x:Bind Title}" FontSize="20" FontWeight="SemiBold"/>
-                                            <TextBlock Text="{x:Bind Meta}" FontSize="13" Foreground="{StaticResource BrimstoneMuted}"/>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{x:Bind DurationText}" FontSize="14"
-                                                   Foreground="{StaticResource BrimstoneMuted}" VerticalAlignment="Center"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </Grid>
-
-                    <Grid x:Name="NowPlayingPanel" Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="390"/>
-                            <ColumnDefinition Width="44"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Border Width="360" Height="360" CornerRadius="22" Background="#2A2035" VerticalAlignment="Center">
-                            <TextBlock Text="◉" FontSize="118" Foreground="#A47AFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                            <TextBlock Text="NOW PLAYING" FontSize="15" Foreground="#B995FF" FontWeight="Bold"/>
-                            <TextBlock x:Name="NowTitleText" Text="Nothing playing" FontSize="42" FontWeight="SemiBold"
-                                       TextWrapping="Wrap" Margin="0,12,0,8"/>
-                            <TextBlock x:Name="NowArtistText" FontSize="22" Foreground="{StaticResource BrimstoneMuted}"/>
-                            <TextBlock x:Name="NowAlbumText" FontSize="16" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,26"/>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="|◀" Click="PreviousButton_Click"/>
-                                <Button x:Name="PlayPauseButton" Content="Pause" Background="{StaticResource BrimstoneAccent}" Click="PlayPauseButton_Click"/>
-                                <Button Content="■" Click="StopButton_Click"/>
-                                <Button Content="▶|" Click="NextButton_Click"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Grid>
-
-                    <Grid x:Name="RipPanel" Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="Rip Disc" FontSize="38" FontWeight="SemiBold"/>
-                            <TextBlock Text="Insert it. Brimstone identifies, rips and files it automatically." FontSize="17" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
-                        </StackPanel>
-                        <Border Grid.Row="1" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="20"
-                                Padding="28" Margin="0,20,0,0">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="242"/>
-                                    <ColumnDefinition Width="32"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Border Width="224" Height="224" CornerRadius="112" Background="#111116" BorderBrush="#5B3F79" BorderThickness="2">
-                                    <Grid>
-                                        <Ellipse Width="168" Height="168" Stroke="#6B5D78" StrokeThickness="2"/>
-                                        <Ellipse Width="44" Height="44" Fill="#09090C" Stroke="#7D6C8E" StrokeThickness="2"/>
-                                        <TextBlock Text="AUTO" FontSize="14" FontWeight="Bold" Foreground="#B995FF"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,34"/>
-                                    </Grid>
-                                </Border>
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                    <TextBlock x:Name="RipModeText" Text="AUTO-RIP ON" FontSize="14" FontWeight="Bold" Foreground="#B995FF"/>
-                                    <TextBlock x:Name="RipStatusText" Text="Waiting for a music disc" FontSize="31" FontWeight="SemiBold"
-                                               TextWrapping="Wrap" Margin="0,9,0,8"/>
-                                    <TextBlock x:Name="RipDetailText" Text="Music discs are identified, ripped, verified, added to Your Music and ejected automatically."
-                                               FontSize="17" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" MaxWidth="690"/>
-                                    <StackPanel x:Name="BluRayOptionsPanel" Visibility="Collapsed" Margin="0,22,0,0">
-                                        <TextBlock Text="BLU-RAY TITLES" FontSize="14" FontWeight="Bold" Foreground="#B995FF"/>
-                                        <ComboBox x:Name="BluRayTitleCombo" Width="520" HorizontalAlignment="Left"
-                                                  DisplayMemberPath="Label" Margin="0,8,0,10"/>
-                                        <CheckBox x:Name="KeepBluRayVideoCheckBox"
-                                                  Content="Keep video with the lossless audio"
-                                                  IsChecked="False" FontSize="15"/>
-                                        <Button x:Name="PrepareBluRayButton"
-                                                Content="Rip selected title"
-                                                HorizontalAlignment="Left" Margin="0,12,0,0"
-                                                Click="PrepareBluRayButton_Click"/>
-                                    </StackPanel>
-                                    <Button x:Name="SendBluRayToCoreButton"
-                                            Content="⇧  Finish on another Core"
-                                            HorizontalAlignment="Left"
-                                            Margin="0,18,0,0"
-                                            MinWidth="220"
-                                            Click="SendBluRayToCoreButton_Click"
-                                            Visibility="Collapsed"/>
-                                    <Button x:Name="RipNowButton" Content="Rip now" HorizontalAlignment="Left" Margin="0,24,0,0"
-                                            Click="RipNowButton_Click" Visibility="Collapsed"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                    </Grid>
-
-                    <Grid x:Name="SettingsPanel" Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="Settings" FontSize="38" FontWeight="SemiBold"/>
-                            <TextBlock Text="The boring stuff stays deliberately small." FontSize="16" Foreground="{StaticResource BrimstoneMuted}" Margin="0,5,0,0"/>
-                        </StackPanel>
-                        <Grid Grid.Row="1" Margin="0,20,0,0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="20"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="1*"/>
-                                <ColumnDefinition Width="24"/>
-                                <ColumnDefinition Width="1*"/>
-                            </Grid.ColumnDefinitions>
-
-                            <Border Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="16" Padding="18">
-                                <StackPanel>
-                                    <TextBlock Text="Mode" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock x:Name="SettingsEditionText" Text="Standalone Core" FontSize="23" FontWeight="SemiBold" Margin="0,4,0,8"/>
-                                    <TextBlock Text="This Xbox is the Core: library, playback, ripping and API all run locally."
-                                               FontSize="15" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Column="2" Background="#17171D" BorderBrush="#34313D" BorderThickness="1" CornerRadius="16" Padding="18">
-                                <StackPanel>
-                                    <TextBlock Text="Xbox Core" FontSize="15" Foreground="{StaticResource BrimstoneMuted}"/>
-                                    <TextBlock Text="xbox-core.local" FontSize="22" FontWeight="SemiBold" Margin="0,4,0,8"/>
-                                    <TextBlock x:Name="SettingsCoreText" Text="Not configured" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                    <TextBlock x:Name="SettingsEndpointText" FontSize="13" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap"/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                        <Button Content="Reveal login" Click="RevealCorePasswordButton_Click"/>
-                                        <Button Content="Rotate login" Click="RotateCorePasswordButton_Click"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#17171D" BorderBrush="#34313D"
-                                    BorderThickness="1" CornerRadius="16" Padding="18">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="1*"/>
-                                        <ColumnDefinition Width="26"/>
-                                        <ColumnDefinition Width="1*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel>
-                                        <TextBlock Text="Send to another Brimstone Core" FontSize="17" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Optional destination only. This Xbox remains a standalone Core."
-
-                                                   FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,8"/>
-                                        <TextBox x:Name="TransferCoreUrlBox" PlaceholderText="http://core-audio.local:8080"/>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="1*"/>
-                                                <ColumnDefinition Width="16"/>
-                                                <ColumnDefinition Width="1*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox x:Name="TransferCoreUsernameBox" Text="admin"/>
-                                            <PasswordBox x:Name="TransferCorePasswordBox" Grid.Column="2" PasswordRevealMode="Peek"/>
-                                        </Grid>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Button Content="Connect Core" Click="TransferCoreConnectButton_Click"/>
-                                            <TextBlock x:Name="TransferCoreStatusText" VerticalAlignment="Center"
-                                                       FontSize="14" Foreground="{StaticResource BrimstoneMuted}" Margin="10,0,0,0"/>
-                                        </StackPanel>
-                                    </StackPanel>
-
-                                    
-                                </Grid>
-                            </Border>
-                        </Grid>
-                    </Grid>
-                </Grid>
-
-                <Border Grid.Row="2" Background="#111116" BorderBrush="#292731" BorderThickness="0,1,0,0" Padding="34,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock x:Name="FooterTitleText" Text="Nothing playing" FontSize="17" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="FooterMetaText" Text="Ready" FontSize="11" Foreground="{StaticResource BrimstoneMuted}" Margin="0,3,0,0"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="|◀" Click="PreviousButton_Click"/>
-                            <Button x:Name="FooterPlayPauseButton" Content="▶" Background="{StaticResource BrimstoneAccent}" Click="PlayPauseButton_Click"/>
-                            <Button Content="■" Click="StopButton_Click"/>
-                            <Button Content="▶|" Click="NextButton_Click"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <TextBlock x:Name="FooterOutputText" Text="Xbox" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Right"/>
-                            <TextBlock x:Name="FooterSignalText" Text="Brimstone audio" FontSize="11" Foreground="{StaticResource BrimstoneMuted}" HorizontalAlignment="Right"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-            </Grid>
-
-            <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Margin="0,0,0,102" Background="#F02B2038" CornerRadius="10" Padding="16,10"
-                    Visibility="Collapsed">
-                <TextBlock x:Name="ToastText" FontSize="15"/>
-            </Border>
+<Page x:Class="BrimstoneXbox.MainPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Background="{StaticResource BrimstoneBackground}" KeyDown="Page_KeyDown">
+ <Page.Resources>
+  <DataTemplate x:Key="CoverTemplate">
+   <Border Width="230" Height="300" Background="{StaticResource BrimstonePanel}" CornerRadius="16" Margin="7">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="190"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Grid Background="#27193A">
+      <TextBlock Text="♫" FontSize="68" Foreground="{StaticResource BrimstoneAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Image Source="{Binding Artwork}" Stretch="UniformToFill"/>
+     </Grid>
+     <StackPanel Grid.Row="1" Margin="14,10">
+      <TextBlock Text="{Binding Artist}" Foreground="{StaticResource BrimstoneAccent}" FontSize="16" TextTrimming="CharacterEllipsis"/>
+      <TextBlock Text="{Binding Title}" FontSize="21" FontWeight="SemiBold" MaxLines="2" TextWrapping="Wrap"/>
+      <TextBlock Text="{Binding Meta}" FontSize="14" Foreground="{StaticResource BrimstoneMuted}" TextTrimming="CharacterEllipsis"/>
+     </StackPanel>
+    </Grid>
+   </Border>
+  </DataTemplate>
+ </Page.Resources>
+ <Viewbox Stretch="Uniform">
+  <!-- Shared iOS visual language, with a 1600x900 safe-area canvas for 1080p/4K TVs. -->
+  <Grid Width="1600" Height="900" Margin="0" Background="{StaticResource BrimstoneBackground}">
+   <Grid.RowDefinitions><RowDefinition Height="100"/><RowDefinition Height="*"/><RowDefinition Height="75"/></Grid.RowDefinitions>
+   <Grid Margin="52,18,52,10">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <Image Source="Assets/Brand.png" Width="62" Height="62" Margin="0,0,18,0"/>
+     <StackPanel><TextBlock Text="Brimstone Xbox Control" FontSize="32" FontWeight="SemiBold"/>
+      <TextBlock x:Name="ConnectionText" Text="R1 revision 29 · Connect to your Core" Foreground="{StaticResource BrimstoneMuted}" FontSize="17"/>
+     </StackPanel>
+    </StackPanel>
+    <ComboBox x:Name="OutputPicker" Grid.Column="1" Width="330" VerticalAlignment="Center" PlaceholderText="Choose speaker" DisplayMemberPath="Content" SelectionChanged="Output_Changed"/>
+   </Grid>
+   <Grid x:Name="Shell" Grid.Row="1" Margin="48,0,48,10" Visibility="Collapsed">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <StackPanel>
+     <Button Content="Home" Tag="Home" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <Button Content="Playing" Tag="Playing" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <Button Content="Your Music" Tag="Your Music" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <Button Content="Streaming" Tag="Streaming" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <Button Content="Spoken Word" Tag="Spoken Word" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <Button Content="Videos" Tag="Videos" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <Button Content="Settings" Tag="Settings" Click="Navigate_Click" HorizontalAlignment="Stretch"/>
+     <TextBlock Text="R1 revision 29&#xA;Control · 2.5.0" Foreground="{StaticResource BrimstoneMuted}" Margin="16,28,0,0" FontSize="15"/>
+    </StackPanel>
+    <Grid Grid.Column="2">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="Heading" Text="Home" FontSize="36" FontWeight="SemiBold" Margin="4,4,0,12"/>
+      <Button Grid.Column="1" Content="Refresh" Click="Refresh_Click"/>
+     </Grid>
+     <StackPanel x:Name="Filters" Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,14">
+      <ComboBox x:Name="CollectionPicker" Width="230" SelectedIndex="0" SelectionChanged="Filter_Changed">
+       <ComboBoxItem Content="Albums" Tag="albums"/><ComboBoxItem Content="Bootlegs" Tag="bootlegs"/>
+       <ComboBoxItem Content="Mixtapes" Tag="mixtapes"/><ComboBoxItem Content="Concerts" Tag="concerts"/>
+       <ComboBoxItem Content="Radio recordings" Tag="radio_recordings"/>
+      </ComboBox>
+      <ComboBox x:Name="SpokenPicker" Width="230" SelectedIndex="0" SelectionChanged="Filter_Changed" Visibility="Collapsed">
+       <ComboBoxItem Content="Podcasts"/><ComboBoxItem Content="Audiobooks"/>
+      </ComboBox>
+      <ComboBox x:Name="BandPicker" Width="260" SelectionChanged="Filter_Changed" Visibility="Collapsed"/>
+      <TextBox x:Name="SearchBox" Width="430" PlaceholderText="Search artist or title" TextChanged="Search_Changed" Margin="16,0,0,0"/>
+     </StackPanel>
+     <Grid Grid.Row="2">
+      <GridView x:Name="Cards" ItemTemplate="{StaticResource CoverTemplate}" IsItemClickEnabled="True" ItemClick="Card_Click"
+       SelectionMode="Single" IsTabStop="True" XYFocusKeyboardNavigation="Enabled"/>
+      <TextBlock x:Name="EmptyText" Visibility="Collapsed" Foreground="{StaticResource BrimstoneMuted}" FontSize="22" TextWrapping="Wrap" Margin="12,30"/>
+      <Grid x:Name="PlayingPanel" Visibility="Collapsed">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Border Background="{StaticResource BrimstonePanel}" CornerRadius="18" Padding="24">
+        <StackPanel>
+         <Image x:Name="PlayingArtwork" Height="235" Stretch="Uniform"/>
+         <TextBlock x:Name="PlayingTitle" Text="Nothing playing" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" Margin="0,16,0,8"/>
+         <TextBlock x:Name="PlayingArtist" FontSize="19" Foreground="{StaticResource BrimstoneMuted}" TextWrapping="Wrap" MaxLines="2"/>
+         <TextBlock x:Name="PlayingState" FontSize="16" Foreground="{StaticResource BrimstoneAccent}" Margin="0,12"/>
+         <Slider x:Name="Seek" Minimum="0" Maximum="1" ValueChanged="Seek_Changed"/>
+         <TextBlock x:Name="TimeText" FontSize="16" Foreground="{StaticResource BrimstoneMuted}"/>
+         <StackPanel Orientation="Horizontal" Margin="0,12,0,4">
+          <Button Content="Previous" Tag="previous" Click="Transport_Click"/><Button x:Name="PlayButton" Content="Play" Tag="resume" Click="Transport_Click"/>
+          <Button Content="Next" Tag="next" Click="Transport_Click"/>
+         </StackPanel>
+         <StackPanel Orientation="Horizontal"><Button Content="Stop" Tag="stop" Click="Transport_Click"/>
+          <Button Content="Mute" Click="Mute_Click"/><Slider x:Name="Volume" Width="220" Minimum="0" Maximum="100" Value="70" ValueChanged="Volume_Changed"/>
+         </StackPanel>
+        </StackPanel>
+       </Border>
+       <Border Grid.Column="2" Background="{StaticResource BrimstonePanel}" CornerRadius="18" Padding="20">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+         <Grid><TextBlock Text="Queue" FontSize="27"/><Button Content="Clear queue" HorizontalAlignment="Right" Click="ClearQueue_Click"/></Grid>
+         <ListView x:Name="QueueList" Grid.Row="1" SelectionMode="None" Margin="0,16,0,0">
+          <ListView.ItemTemplate><DataTemplate><StackPanel Margin="4,10"><TextBlock Text="{Binding Title}" FontSize="21"/>
+           <TextBlock Text="{Binding Meta}" Foreground="{StaticResource BrimstoneMuted}" FontSize="16"/></StackPanel></DataTemplate></ListView.ItemTemplate>
+         </ListView>
         </Grid>
-    </Viewbox>
+       </Border>
+      </Grid>
+      <Grid x:Name="AlbumPanel" Visibility="Collapsed">
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <StackPanel Orientation="Horizontal"><Button Content="Back" Click="AlbumBack_Click"/>
+        <Button Content="Play" Click="PlayAlbum_Click"/><Button Content="Add to queue" Click="AppendAlbum_Click"/>
+        <ComboBox x:Name="EditionPicker" Width="350" DisplayMemberPath="Title" SelectionChanged="Edition_Changed"/>
+       </StackPanel>
+       <TextBlock x:Name="AlbumTitle" Grid.Row="1" FontSize="27" Margin="4,14" TextWrapping="Wrap"/>
+       <ListView x:Name="Tracks" Grid.Row="2" IsItemClickEnabled="True" ItemClick="Track_Click" SelectionMode="Single">
+        <ListView.ItemTemplate><DataTemplate><Grid Margin="4,6"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+         <TextBlock Text="{Binding Title}" FontSize="22" VerticalAlignment="Center"/>
+         <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Content="Play" Tag="{Binding}" Click="TrackPlay_Click"/>
+          <Button Content="Add to queue" Tag="{Binding}" Click="TrackAppend_Click"/></StackPanel>
+        </Grid></DataTemplate></ListView.ItemTemplate>
+       </ListView>
+      </Grid>
+      <Grid x:Name="VideoPanel" Visibility="Collapsed">
+       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+       <Button Content="Back to videos" Click="VideoBack_Click" HorizontalAlignment="Left"/>
+       <MediaPlayerElement x:Name="VideoPlayer" Grid.Row="1" AreTransportControlsEnabled="True"/>
+       <TextBlock x:Name="VideoMetadata" Grid.Row="2" FontSize="20" TextWrapping="Wrap" Foreground="{StaticResource BrimstoneMuted}" Margin="4,14"/>
+      </Grid>
+      <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
+       <StackPanel Margin="10,12" MaxWidth="800" HorizontalAlignment="Left">
+        <TextBlock Text="Connected to your existing Core" FontSize="25" FontWeight="SemiBold"/>
+        <TextBlock x:Name="CoreAddressText" FontSize="21" Foreground="{StaticResource BrimstoneMuted}" Margin="0,12"/>
+        <TextBlock Text="Xbox Control streams from Core. It does not host a Core engine, database, ripper or local API. Existing app data is retained." FontSize="20" TextWrapping="Wrap"/>
+        <CheckBox x:Name="CompatibleVideo" IsChecked="True" Content="Compatible video delivery from Core" Margin="0,22,0,0"/>
+        <TextBlock Text="Console audio follows Xbox system settings (HDMI / optical). Video and music stream without saving media files." FontSize="20" TextWrapping="Wrap" Foreground="{StaticResource BrimstoneMuted}"/>
+        <Button Content="Change Core / sign out" Click="Forget_Click" HorizontalAlignment="Left" Margin="0,25"/>
+       </StackPanel>
+      </ScrollViewer>
+     </Grid>
+    </Grid>
+   </Grid>
+   <Grid x:Name="SetupPanel" Grid.Row="1" Margin="180,35" Visibility="Visible">
+    <StackPanel MaxWidth="950" HorizontalAlignment="Center">
+     <TextBlock Text="Connect to your Core" FontSize="44" FontWeight="SemiBold"/>
+     <TextBlock Text="Your music lives on Core. This Xbox is your Control and player." FontSize="23" Foreground="{StaticResource BrimstoneMuted}" Margin="0,16,0,25" TextWrapping="Wrap"/>
+     <TextBlock Text="Core address" FontSize="20"/><TextBox x:Name="CoreUrlBox" PlaceholderText="https://core.local:8443"/>
+     <TextBlock Text="Username" FontSize="20"/><TextBox x:Name="UsernameBox" Text="admin"/>
+     <TextBlock Text="Password" FontSize="20"/><PasswordBox x:Name="PasswordBox" PasswordRevealMode="Peek"/>
+     <Button x:Name="ConnectButton" Content="Connect" Click="Connect_Click" HorizontalAlignment="Left" Margin="0,24,0,8"/>
+     <TextBlock x:Name="SetupStatus" TextWrapping="Wrap" Foreground="{StaticResource BrimstoneMuted}" FontSize="20"/>
+    </StackPanel>
+   </Grid>
+   <Grid Grid.Row="2" Margin="52,0,52,14">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock x:Name="FooterTitle" Text="Brimstone Control · R1 revision 29" VerticalAlignment="Center" FontSize="20" TextTrimming="CharacterEllipsis"/>
+    <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Content="Playing" Tag="Playing" Click="Navigate_Click"/>
+     <Button Content="Play / Pause" Click="FooterPlay_Click"/>
+    </StackPanel>
+   </Grid>
+   <Border x:Name="ToastBorder" Grid.RowSpan="3" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="200,0,200,90" Padding="22,14" Background="#EE342048" CornerRadius="12" Visibility="Collapsed">
+    <TextBlock x:Name="ToastText" FontSize="21" TextWrapping="Wrap"/>
+   </Border>
+  </Grid>
+ </Viewbox>
 </Page>

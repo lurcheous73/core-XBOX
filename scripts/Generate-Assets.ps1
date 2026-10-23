@@ -22,13 +22,12 @@ foreach ($a in $assets) {
     $text = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(243,241,248))
     try {
         $gfx.Clear([System.Drawing.Color]::FromArgb(8,8,11))
-        $m = [Math]::Max(2,[int]([Math]::Min($a[1],$a[2])/10))
-        $gfx.FillRectangle($accent,$m,$m,$a[1]-2*$m,$a[2]-2*$m)
-        $font = [System.Drawing.Font]::new("Segoe UI",[Math]::Max(8,[single]([Math]::Min($a[1],$a[2])*.30)),[System.Drawing.FontStyle]::Bold)
+        $brand = [System.Drawing.Image]::FromFile((Join-Path $out "Brand.png"))
         try {
-            $size = $gfx.MeasureString($a[3],$font)
-            $gfx.DrawString($a[3],$font,$text,($a[1]-$size.Width)/2,($a[2]-$size.Height)/2)
-        } finally { $font.Dispose() }
+            $size = [Math]::Min($a[1], $a[2])
+            $gfx.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $gfx.DrawImage($brand, [int](($a[1]-$size)/2), [int](($a[2]-$size)/2), $size, $size)
+        } finally { $brand.Dispose() }
         $bmp.Save((Join-Path $out $a[0]),[System.Drawing.Imaging.ImageFormat]::Png)
     } finally {
         $accent.Dispose(); $text.Dispose(); $gfx.Dispose(); $bmp.Dispose()

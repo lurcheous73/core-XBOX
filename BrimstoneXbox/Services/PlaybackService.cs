@@ -20,6 +20,7 @@ namespace BrimstoneXbox.Services
         public static PlaybackService Instance => Lazy.Value;
 
         readonly MediaPlayer _player;
+        public MediaPlayer Player => _player;
         readonly ApplicationDataContainer _settings = ApplicationData.Current.LocalSettings;
         MediaPlaybackList _playlist;
         string _title = "";
